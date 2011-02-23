@@ -301,7 +301,7 @@
 }
 
 - (BOOL)isSingleton {
-	return start == end;
+	return start && start == end;
 }
 
 - (NSArray *)allObjects {
