@@ -370,7 +370,7 @@ CFIndex PhiTextFrameBSearchLineWithPoint (CTFrameRef textFrame, CFArrayRef textL
 		rect.origin = bounds.origin;
 		staleRect.origin = rect.origin;
 	}
-	if (CGSizeEqualToSize(rect.size, CGSizeZero)) {
+	if (rect.size.height == 0.0) {
 		CFArrayRef textLines = CTFrameGetLines(textFrame);
 		CFIndex count = 0;
 		if (textLines)
@@ -431,7 +431,7 @@ CFIndex PhiTextFrameBSearchLineWithPoint (CTFrameRef textFrame, CFArrayRef textL
 
 - (void)_validateFrame {
 #ifdef TRACE
-	NSLog(@"%@Entering -[_validateFrame]...", traceIndent, self);
+	NSLog(@"%@Entering -[%x _validateFrame]...", traceIndent, self);
 #endif
 	NSRange range;
 	CFRange visibleRange;
@@ -557,12 +557,14 @@ CFIndex PhiTextFrameBSearchLineWithPoint (CTFrameRef textFrame, CFArrayRef textL
 - (void)endContentAccess {
 	NSAssert(accessCount > 0, @"Access to the content of this PhiTextFrame has not began, call the beginContentAccess method first.");
 	accessCount--;
-	[self discardContentIfPossible];
+	if (!deferEndAccess)
+		[self discardContentIfPossible];
 }
 
 - (void)deferedEndContentAccess {
 	deferEndAccess = NO;
-	[self endContentAccess];
+	[self performSelector:@selector(endContentAccess) withObject:nil afterDelay:0.2];
+	//[self endContentAccess];
 }
 
 - (PhiTextFrame *)autoEndContentAccess {
@@ -582,6 +584,9 @@ CFIndex PhiTextFrameBSearchLineWithPoint (CTFrameRef textFrame, CFArrayRef textL
 }
 
 - (void)invalidateFrame {
+#ifdef TRACE
+	NSLog(@"%@Entering -[%x invalidateFrame]...", traceIndent, self);
+#endif
 	[[NSNotificationCenter defaultCenter] postNotificationName:PhiTextFrameWillDiscardContentNotification object:self];
 #if PHI_FRAMESETTER_MEMBER
 	if (framesetter) {
@@ -600,7 +605,7 @@ CFIndex PhiTextFrameBSearchLineWithPoint (CTFrameRef textFrame, CFArrayRef textL
 }
 - (void)discardContentIfPossible {
 #ifdef TRACE
-	NSLog(@"%@Entering %s...", traceIndent, __FUNCTION__);
+	NSLog(@"%@Entering -[%x discardContentIfPossible] %d...", traceIndent, self, accessCount);
 #endif
 	if (accessCount <= 0 || (accessCount == 1 && deferEndAccess)) {
 		[self invalidateFrame];

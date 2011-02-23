@@ -54,7 +54,7 @@
 @implementation PhiTextEditorView
 
 @synthesize delegate;
-@synthesize textDocument, selectionView;
+@synthesize textDocument, selectionView, markedTextView;
 @synthesize magnifier;
 @synthesize inputView, inputAccessoryView;
 @synthesize selectedTextRange, markedTextRange, markedTextStyle;
@@ -246,6 +246,15 @@
 		[autoScrollTimer release];
 	}
 	autoScrollTimer = nil;
+	
+	PhiTextSelectionView *mtv = [[PhiTextSelectionView alloc] initWithFrame:CGRectZero];
+	[mtv setCaretsEnabled:NO];
+	[mtv setHandlesEnabled:NO];
+	UIColor *mtc = [mtv selectionColor];
+	[mtv setSelectionStrokeColor:mtc];
+	[mtv setSelectionColor:[mtc colorWithAlphaComponent:0.1]];
+	self.markedTextView = mtv;
+	[mtv release];
 
 	flags.willTextChange = flags.willSelectionChange = NO;
 	flags.shouldNotifyInputDelegate = YES;
@@ -434,6 +443,7 @@
 	
 	[self setTextDocument:nil];
 	[self setSelectionView:nil];
+	[self setMarkedTextView:nil];
 	
 	if (tokenizer) [tokenizer release];
 	tokenizer = nil;
@@ -603,6 +613,30 @@
 	}
 	if (selectionView) {
 		[self bringSubviewToFront:selectionView];
+	}
+}
+- (void)setMarkedTextView:(PhiTextSelectionView *)view {
+	if (markedTextView != view) {
+		if (markedTextView) {
+			[markedTextView removeFromSuperview];
+			[markedTextView setOwner:nil];
+			[markedTextView release];
+		}
+		markedTextView = view;
+		if (markedTextView) {
+			if (self.selectionView) {
+				[self insertSubview:markedTextView belowSubview:self.selectionView];
+			} else {
+				[self addSubview:markedTextView];
+			}
+			[markedTextView setOwner:self];
+			if (self.markedTextRange) {
+				[markedTextView setHidden:YES];
+			} else {
+				[markedTextView setHidden:NO];
+			}
+			[markedTextView retain];
+		}
 	}
 }
 
@@ -782,6 +816,9 @@
 }
 
 - (void)setNeedsDisplay {
+#ifdef TRACE
+	NSLog(@"%@Entering -[%@ %@]...", traceIndent, NSStringFromClass([self class]), NSStringFromSelector(_cmd));
+#endif
 #if PHI_ACCESS_FRAME_BEFORE_DISPLAY
 	CGRect documentBounds = CGRectOffset([self bounds], -[self.textDocument paddingLeft], -[self.textDocument paddingTop]);
 	PhiAATreeRange *textFrameRange = [self.textDocument beginContentAccessInRect:documentBounds];
@@ -802,6 +839,9 @@
 }
 
 - (void)setNeedsDisplayInRect:(CGRect)rect {
+#ifdef TRACE
+	NSLog(@"%@Entering -[%@ %@:%@]...", traceIndent, NSStringFromClass([self class]), NSStringFromSelector(_cmd), NSStringFromCGRect(rect));
+#endif
 #if PHI_ACCESS_FRAME_BEFORE_DISPLAY
 	CGRect documentBounds = CGRectOffset([self bounds], -[self.textDocument paddingLeft], -[self.textDocument paddingTop]);
 	PhiAATreeRange *textFrameRange = [self.textDocument beginContentAccessInRect:documentBounds];
@@ -821,6 +861,7 @@
 
 - (void)addSubviewToBack:(UIView *)view {
 	[self insertSubview:view atIndex:0];
+	[view setNeedsDisplay];
 }
 - (void)insertTextViewTileWithFrame:(CGRect)tileFrame atIndex:(NSUInteger)index {
 	PhiTextView *tile = [reusableTextViews anyObject];
@@ -835,11 +876,11 @@
 	}
 	tile.frame = tileFrame;
 	tile.document = self.textDocument;
-//	tile.selectionView = self.selectionView;
-	if (CGRectIntersectsRect(tileFrame, self.bounds))
+	if (CGRectIntersectsRect(tileFrame, self.bounds)) {
 		[self addSubviewToBack:tile];
-	else
+	} else {
 		[self performSelectorOnMainThread:@selector(addSubviewToBack:) withObject:tile waitUntilDone:NO];
+	}
 	if (index < [textViews count]) {
 		[textViews insertObject:tile atIndex:index];
 	} else {
@@ -882,6 +923,7 @@
 	if (self.bounds.size.height >= self.contentSize.height)
 		bufferSize.height = 0;
 	CGRect bufferedBounds = CGRectNull;
+	CGRect visibleBounds = [[self.layer presentationLayer] bounds];
 	
 #define SIZE_LIMIT 1500000.0
 	CGFloat n = 0.0;
@@ -931,15 +973,18 @@
 		for (i = 0; i < count; i++) {
 			tile = [textViews objectAtIndex:i];
 			if (!CGRectIntersectsRect(tile.frame, bufferedBounds)) {
+				// Get tile out of the way
 				[self performSelectorOnMainThread:@selector(removeTextViewTile:) withObject:tile waitUntilDone:NO];
 				[textViews removeObject:tile];
 				count--, i--;
 			} else {
 				if (aboveTop && CGRectGetMinY(tile.frame) > CGRectGetMinY(bufferedBounds)) {
+					// Fill rows at top of editor with tiles
 					tileFrame.origin.y = tile.frame.origin.y - tileHeightHint;
 					do {
 						tileFrame.origin.x = bufferedBounds.origin.x;
 						j = 0;
+						// Fill row
 						do {
 							[self insertTextViewTileWithFrame:tileFrame atIndex:j++];
 							count++, i++;
@@ -951,6 +996,7 @@
 				}
 				tileFrame.origin.y = tile.frame.origin.y;
 				if (CGRectGetMinX(tile.frame) > CGRectGetMinX(bufferedBounds)) {
+					// Fill columns at front of current row
 					tileFrame.origin.x = tile.frame.origin.x - tileWidthHint;
 					j = i;
 					do {
@@ -959,10 +1005,14 @@
 						tileFrame.origin.x -= tileWidthHint;
 					} while (CGRectGetMaxX(tileFrame) > CGRectGetMinX(bufferedBounds));
 				}
+				// Skip all columns in current row
 				while (i < count - 1 && tileFrame.origin.y == tile.frame.origin.y)
 				{
+					if (!CGRectIntersectsRect(tile.frame, visibleBounds))
+						[tile setNeedsDisplay];
 					tile = [textViews objectAtIndex:++i];
 				}
+				// Step back if we overshot
 				if (tileFrame.origin.y != tile.frame.origin.y ) {
 					tile = [textViews objectAtIndex:--i];
 				}
@@ -976,9 +1026,11 @@
 			aboveTop = NO;
 		}
 		tileFrame.origin = tile.frame.origin;
+		// Fill rows at bottom of editor
 		while (CGRectGetMaxY(tileFrame) < CGRectGetMaxY(bufferedBounds)) {
 			tileFrame.origin.x = bufferedBounds.origin.x;
 			tileFrame.origin.y += tileHeightHint;
+			// Fill row
 			do {
 				[self addTextViewTileWithFrame:tileFrame];
 				tileFrame.origin.x += tileWidthHint;
@@ -1392,28 +1444,93 @@
 #endif
 }
 
+- (void)setMarkedText:(NSString *)markedText selectedRange:(NSRange)selectedRange {
+#ifdef DEVELOPER
+	NSLog(@"%@Entering setMarkedText:'%@' selectedRange:%@...", traceIndent, markedText, NSStringFromRange(selectedRange));
+#endif
+	PhiTextRange *caret = (PhiTextRange *)[self selectedTextRange];
+	if (markedTextRange) {
+		caret = (PhiTextRange *)markedTextRange;
+		[markedTextRange autorelease];
+		markedTextRange = nil;
+	}
+	NSUInteger startIndex = PhiRangeOffset(caret);
+	PhiTextRange *newSelection = [PhiTextRange textRangeWithRange:
+										  NSMakeRange(startIndex + selectedRange.location,
+													  selectedRange.length)];
+	if (markedText) {
+		markedTextRange = [[PhiTextRange alloc] initWithRange:NSMakeRange(startIndex, markedText.length)];
+		flags.shouldNotifyInputDelegate = NO; {
+			PhiTextStyle *style = self.currentTextStyle;
+			flags.shouldInvalidateTextDocument = NO; {
+				[self.textDocument.undoManager ensureUndoGroupingBegan:PhiTextUndoManagerTypingGroupingType | PhiTextUndoManagerPastingGroupingType];
+				if (caret && ![caret.start isEqual:[self endOfDocument]]) {
+					if (caret.empty && style) {
+						[self.textDocument.store insertAttributedString:
+						 [[[NSMutableAttributedString alloc] initWithString:markedText
+																 attributes:(NSDictionary *)[style attributes]] autorelease]
+																atIndex:PhiRangeOffset(caret)];
+					} else {
+						[self.textDocument.store replaceCharactersInRange:[caret range] withString:markedText];
+					}
+				} else {
+					if (!style)
+						style = [[self textDocument] styleAtEndOfDocument];
+					[self.textDocument.store appendAttributedString:
+					 [[[NSMutableAttributedString alloc] initWithString:markedText
+															 attributes:(NSDictionary *)[style attributes]] autorelease]];
+				}
+			} flags.shouldInvalidateTextDocument = YES;
+			[self changeSelectedRange:newSelection scroll:NO endUndoGrouping:NO];
+		} flags.shouldNotifyInputDelegate = YES;
+		[self.markedTextView setHidden:NO];
+		[self.markedTextView setNeedsLayout];
+		[self.markedTextView setNeedsDisplay];
+	} else {
+		markedTextRange = nil;
+		[self.markedTextView setHidden:YES];
+		if ([caret length]) {
+			flags.shouldNotifyInputDelegate = NO; {
+				[self.textDocument.undoManager ensureUndoGroupingBegan:PhiTextUndoManagerTypingGroupingType | PhiTextUndoManagerPastingGroupingType];
+				[self.textDocument.store deleteCharactersInRange:[(PhiTextRange *)markedTextRange range]];
+			} flags.shouldInvalidateTextDocument = YES;
+			[self changeSelectedRange:newSelection scroll:NO endUndoGrouping:NO];
+		}
+	}
+
+	[self scrollSelectionToVisible];
+}
 - (UITextRange *)markedTextRange {
 #ifdef DEVELOPER
 	NSLog(@"%@Getting markedTextRange:%@", traceIndent, markedTextRange);
 #endif
 	return markedTextRange;
 }
-- (void)setMarkedText:(NSString *)markedText selectedRange:(NSRange)selectedRange {
-#ifdef DEVELOPER
-	NSLog(@"%@Entering setMarkedText:'%@' selectedRange:%@...", traceIndent, markedText, selectedRange);
-#endif
-	//TODO: Support marked text
-}
 - (void)unmarkText {
 #ifdef DEVELOPER
 	NSLog(@"%@Entering %s...", traceIndent, __FUNCTION__);
 #endif
+	if (markedTextRange) {
+		BOOL shouldReplace = YES;
+		if (shouldReplace && [self.delegate respondsToSelector:@selector(textView:shouldChangeTextInRange:replacementText:)]) {
+			shouldReplace = [self.delegate textView:self shouldChangeTextInRange:(PhiTextRange *)markedTextRange replacementText:
+							 [self.textDocument.store substringWithRange:[(PhiTextRange *)markedTextRange range]]];
+		}
+		if (!shouldReplace) {
+			[self.textDocument.undoManager ensureUndoGroupingBegan:PhiTextUndoManagerTypingGroupingType | PhiTextUndoManagerPastingGroupingType];
+			[self.textDocument.store deleteCharactersInRange:[(PhiTextRange *)markedTextRange range]];
+			[self changeSelectedRange:[PhiTextRange textRangeWithPosition:(PhiTextPosition *)[markedTextRange start]]];
+		}
+		[markedTextRange release];
+		[self.markedTextView setHidden:YES];
+	}
+	markedTextRange = nil;
 }
 - (NSDictionary *)markedTextStyle {
 #ifdef DEVELOPER
 	NSLog(@"%@Entering %s...", traceIndent, __FUNCTION__);
 #endif
-	return markedTextStyle;
+    return [self textStylingAtPosition:[markedTextRange start] inDirection:UITextStorageDirectionForward];
 }
 
 - (UITextRange *)textRangeFromPosition:(PhiTextPosition *)p toPosition:(PhiTextPosition *)q {
@@ -1580,16 +1697,21 @@
 #endif
 	return lastRect;
 }
-- (CGRect)visibleCaretRectForPosition:(UITextPosition *)position {
+- (CGRect)visibleCaretRectForPosition:(UITextPosition *)position alignPixels:(BOOL)pixelsAligned toView:(UIView *)view {
 	UITextStorageDirection affinity = [self selectionAffinityForPosition:(PhiTextPosition *)position];
 	CGRect caretRect = [textDocument caretRectForPosition:(PhiTextPosition *)position
 										selectionAffinity:affinity
 											   autoExpand:![[self selectedTextRange] isEmpty]
-												   inRect:self.bounds];
+												   inRect:self.bounds
+											  alignPixels:pixelsAligned
+												   toView:view];
 #ifdef TRACE
 	NSLog(@"%@Getting [PhiTextEditorView visibleCaretRectForPosition:%@]:(%.f, %.f), (%.f, %.f)", traceIndent, position, CGRectComp(caretRect));
 #endif
 	return caretRect;
+}
+- (CGRect)visibleCaretRectForPosition:(UITextPosition *)position {
+	return [self visibleCaretRectForPosition:position alignPixels:NO toView:nil];
 }
 - (CGRect)caretRectForPosition:(UITextPosition *)position {
 	CGRect caretRect = [textDocument caretRectForPosition:(PhiTextPosition *)position
@@ -1653,21 +1775,27 @@
 		flags.shouldInvalidateTextDocument = NO;
 		[self.textDocument.undoManager ensureUndoGroupingBegan:PhiTextUndoManagerTypingGroupingType | PhiTextUndoManagerPastingGroupingType];
 		if (caret && ![caret.start isEqual:[self endOfDocument]]) {
-			if (caret.empty && style) {
-				[self.textDocument.store insertAttributedString:
-				 [[[NSMutableAttributedString alloc] initWithString:text
-														 attributes:(NSDictionary *)[style attributes]] autorelease]
-														atIndex:PhiRangeOffset(caret)];
-			} else {
-				[self.textDocument.store replaceCharactersInRange:[caret range] withString:text];
+			if (text) {
+				if (caret.empty && style) {
+					[self.textDocument.store insertAttributedString:
+					 [[[NSMutableAttributedString alloc] initWithString:text
+															 attributes:(NSDictionary *)[style attributes]] autorelease]
+															atIndex:PhiRangeOffset(caret)];
+				} else {
+					[self.textDocument.store replaceCharactersInRange:[caret range] withString:text];
+				}
+			} else if ([caret length]) {
+				[self.textDocument.store deleteCharactersInRange:[caret range]];
 			}
-			newSelection = [PhiTextRange textRangeWithRange:[self clampRange:NSMakeRange(caret.range.location + text.length, 0)]];
+			newSelection = [PhiTextRange textRangeWithRange:[self clampRange:NSMakeRange(caret.range.location + [text length], 0)]];
 		} else {
-			if (!style)
-				style = [[self textDocument] styleAtEndOfDocument];
-			[self.textDocument.store appendAttributedString:
-			 [[[NSMutableAttributedString alloc] initWithString:text
-													 attributes:(NSDictionary *)[style attributes]] autorelease]];
+			if (text) {
+				if (!style)
+					style = [[self textDocument] styleAtEndOfDocument];
+				[self.textDocument.store appendAttributedString:
+				 [[[NSMutableAttributedString alloc] initWithString:text
+														 attributes:(NSDictionary *)[style attributes]] autorelease]];
+			}
 			newSelection = [PhiTextRange textRangeWithPosition:(PhiTextPosition *)[self endOfDocument]];
 		}
 		flags.shouldInvalidateTextDocument = YES;
@@ -1877,6 +2005,33 @@
 	[pool release];
 }
 
+#pragma mark Selection View Delegate Methods
+
+- (PhiTextRange *)textSelectionViewSelectedTextRange:(PhiTextSelectionView *)view {
+	if (view == self.markedTextView)
+		return (PhiTextRange *)[self markedTextRange];
+	return (PhiTextRange *)[self selectedTextRange];
+}
+
+- (BOOL)textSelectionView:(PhiTextSelectionView *)view shouldShowSelectionHandle:(PhiTextSelectionHandle *)handle {
+	return [self isFirstResponder];
+}
+//- (void)textSelectionView:(PhiTextSelectionView *)view didShowSelectionHandle:(PhiTextSelectionHandle *)handle;
+- (BOOL)textSelectionView:(PhiTextSelectionView *)view shouldHideSelectionHandle:(PhiTextSelectionHandle *)handle {
+	return ![self isFirstResponder];
+}
+//- (void)textSelectionView:(PhiTextSelectionView *)view didHideSelectionHandle:(PhiTextSelectionHandle *)handle;
+
+- (BOOL)textSelectionView:(PhiTextSelectionView *)view shouldShowSelectionCaret:(PhiTextCaretView *)caret {
+	return [self isFirstResponder];
+}
+//- (void)textSelectionView:(PhiTextSelectionView *)view didShowSelectionCaret:(PhiTextCaretView *)caret;
+- (BOOL)textSelectionView:(PhiTextSelectionView *)view shouldHideSelectionCaret:(PhiTextCaretView *)caret {
+	return ![self isFirstResponder];
+}
+//- (void)textSelectionView:(PhiTextSelectionView *)view didHideSelectionCaret:(PhiTextCaretView *)caret;
+
+
 #pragma mark Gesture Methods
 
 - (void)setupGestures {
@@ -1900,11 +2055,6 @@
 		[selectionModifier release];
 	}
 	selectionModifier = nil;
-}
-
-- (void)didShowSelectionHandles {
-}
-- (void)didHideSelectionHandles {
 }
 
 - (CGRect)visibleBounds {

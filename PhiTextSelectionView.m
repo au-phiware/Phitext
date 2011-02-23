@@ -20,7 +20,6 @@
 
 @end
 
-
 @implementation PhiTextSelectionView
 
 + (void)initialize {
@@ -63,16 +62,109 @@
 	return [CAShapeLayer class];
 }
 
-@synthesize owner, handlesShown;
+@synthesize owner, delegate;
 @synthesize startCaret, endCaret;
 @synthesize startHandle, endHandle;
 
+- (PhiTextRange *)selectedTextRange {
+	return [self.delegate textSelectionViewSelectedTextRange:self];
+}
+
+- (BOOL)shouldShowSelectionHandle:(PhiTextSelectionHandle *)view {
+	if ([self.delegate respondsToSelector:@selector(textSelectionView:shouldShowSelectionHandle:)]) {
+		return [self.delegate textSelectionView:self shouldShowSelectionHandle:view];
+	}
+	return YES;
+}
+- (void)didShowSelectionHandle:(PhiTextSelectionHandle *)view {
+	if ([self.delegate respondsToSelector:@selector(textSelectionView:didShowSelectionHandle:)]) {
+		[self.delegate textSelectionView:self didShowSelectionHandle:view];
+	}
+}
+- (BOOL)shouldHideSelectionHandle:(PhiTextSelectionHandle *)view {
+	if ([self.delegate respondsToSelector:@selector(textSelectionView:shouldHideSelectionHandle:)]) {
+		return [self.delegate textSelectionView:self shouldHideSelectionHandle:view];
+	}
+	return NO;
+}
+- (void)didHideSelectionHandle:(PhiTextSelectionHandle *)view {
+	if ([self.delegate respondsToSelector:@selector(textSelectionView:didHideSelectionHandle:)]) {
+		[self.delegate textSelectionView:self didHideSelectionHandle:view];
+	}
+}
+
+- (BOOL)shouldShowSelectionCaret:(PhiTextCaretView *)view {
+	if ([self.delegate respondsToSelector:@selector(textSelectionView:shouldShowSelectionCaret:)]) {
+		return [self.delegate textSelectionView:self shouldShowSelectionCaret:view];
+	}
+	return YES;
+}
+- (void)didShowSelectionCaret:(PhiTextCaretView *)view {
+	if ([self.delegate respondsToSelector:@selector(textSelectionView:didShowSelectionCaret:)]) {
+		[self.delegate textSelectionView:self didShowSelectionCaret:view];
+	}
+}
+- (BOOL)shouldHideSelectionCaret:(PhiTextCaretView *)view {
+	if ([self.delegate respondsToSelector:@selector(textSelectionView:shouldHideSelectionCaret:)]) {
+		return [self.delegate textSelectionView:self shouldHideSelectionCaret:view];
+	}
+	return NO;
+}
+- (void)didHideSelectionCaret:(PhiTextCaretView *)view {
+	if ([self.delegate respondsToSelector:@selector(textSelectionView:didHideSelectionCaret:)]) {
+		[self.delegate textSelectionView:self didHideSelectionCaret:view];
+	}
+}
+
+- (BOOL)isHandlesShown {
+	return flags.handlesShown;
+}
+
+- (BOOL)isHandlesEnabled {
+	return flags.handlesEnabled;
+}
+- (void)setHandlesEnabled:(BOOL)flag {
+	if (flags.handlesEnabled != flag) {
+		flags.handlesEnabled = flag;
+		if (!flags.handlesEnabled) {
+			[endHandle setHidden:YES];
+			[startHandle setHidden:YES];
+		}
+		[self setNeedsLayout];
+	}
+}
+
+- (BOOL)caretsEnabled {
+	return flags.caretsEnabled;
+}
+- (void)setCaretsEnabled:(BOOL)flag {
+	if (flags.caretsEnabled != flag) {
+		flags.caretsEnabled = flag;
+		if (!flags.caretsEnabled) {
+			[endCaret setHidden:YES];
+			[startCaret setHidden:YES];
+		}
+		[self setNeedsLayout];
+	}
+}
+
+- (BOOL)pixelAligned {
+	return flags.caretsEnabled;
+}
+- (void)setPixelAligned:(BOOL)flag {
+	if (flags.pixelAligned != flag) {
+		flags.pixelAligned = flag;
+		[self setNeedsLayout];
+		[self setNeedsDisplay];
+	}
+}
+
 - (BOOL)needsUpdate {
-	return needsUpdate
-			||
+	return flags.needsUpdate
+			|| flags.caretsEnabled && (
 		   CGSizeEqualToSize(CGSizeZero, self.endCaret.frame.size) && CGRectContainsPoint(self.superview.bounds, self.endCaret.frame.origin)
 			||
-	       CGSizeEqualToSize(CGSizeZero, self.startCaret.frame.size) && CGRectContainsPoint(self.superview.bounds, self.startCaret.frame.origin);
+	       CGSizeEqualToSize(CGSizeZero, self.startCaret.frame.size) && CGRectContainsPoint(self.superview.bounds, self.startCaret.frame.origin));
 }
 
 - (void)layoutSubviews {
@@ -91,14 +183,14 @@
 	NSLog(@"%@Entering %s...", traceIndent, __FUNCTION__);
 #endif
 	if ([self needsUpdate]) {
-		PhiTextRange *selectedRange = (PhiTextRange *)[owner selectedTextRange];
+		PhiTextRange *selectedRange = (PhiTextRange *)[self selectedTextRange];
 		BOOL startChanged, endChanged, rangeChanged;
 		endChanged   = CGSizeEqualToSize(CGSizeZero,   endCaret.bounds.size) || !lastSelectedTextRange || [[self owner] comparePosition:[selectedRange end] toPosition:[lastSelectedTextRange end]] != NSOrderedSame;
 		startChanged = CGSizeEqualToSize(CGSizeZero, startCaret.bounds.size) || !lastSelectedTextRange || [[self owner] comparePosition:[selectedRange start] toPosition:[lastSelectedTextRange start]] != NSOrderedSame;
 		rangeChanged = endChanged || startChanged;
 		if (selectedRange && ![self isHidden]) {
 			CGRect startRect;
-			CGRect endRect = [self convertRect:[[self owner] visibleCaretRectForPosition:[selectedRange end]] fromView:[self owner]];
+			CGRect endRect = [self convertRect:[[self owner] visibleCaretRectForPosition:[selectedRange end] alignPixels:YES toView:self] fromView:[self owner]];
 			if (!endChanged && !CGSizeEqualToSize(CGSizeZero, endRect.size)) {// Maybe the rect has...
 				endChanged = !CGRectEqualToRect(endRect, [endCaret frame]);
 			}
@@ -106,76 +198,101 @@
 #ifdef DEVELOPER
 				NSLog(@"Selected range is not empty.");
 #endif
-				startRect = [self convertRect:[[self owner] visibleCaretRectForPosition:[selectedRange start]] fromView:[self owner]];
+				startRect = [self convertRect:[[self owner] visibleCaretRectForPosition:[selectedRange start] alignPixels:YES toView:self] fromView:[self owner]];
 				if (!startChanged && !CGSizeEqualToSize(CGSizeZero, startRect.size)) {// Maybe the rect has...
 					startChanged = !CGRectEqualToRect(startRect, [startCaret frame]);
 				}
 				rangeChanged = endChanged || startChanged;
-				if (startChanged) {
+				if (flags.caretsEnabled & startChanged) {
 					[startCaret setFrame:startRect];
+				}
+				if (flags.handlesEnabled & startChanged) {
 					if (!CGSizeEqualToSize(CGSizeZero, startRect.size)) {
 						[startHandle setCenter:CGPointMake(CGRectGetMidX(startRect), CGRectGetMinY(startRect))];
 					}
 				}
-				if (rangeChanged) {
+				if (flags.handlesEnabled & rangeChanged) {
 					CGSize proximityDistance = CGSizeMake(CGRectGetMidX(endRect) - CGRectGetMidX(startRect), CGRectGetMidY(endRect) - CGRectGetMidY(startRect));
 					[startHandle setProximityDistance:proximityDistance];
 					[endHandle setProximityDistance:proximityDistance];
 				}
-				if (!handlesShown && [[self owner] isFirstResponder]) {
 #ifdef DEVELOPER
-					NSLog(@"Handles and start caret is hidden, show them now.");
+				NSLog(@"Handles and start caret might be hidden, show them now.");
 #endif
-					[self stopBlinking];
-					[startCaret setHidden:NO];
-					[startHandle setHidden:NO];
-					[endHandle setHidden:NO];
-					[[self owner] didShowSelectionHandles];
-					handlesShown = YES;
+				if (flags.caretsEnabled) {
+					if ([startCaret isHidden] && [self shouldShowSelectionCaret:startCaret]) {
+						[self stopBlinking];
+						[startCaret setHidden:NO];
+						[self didShowSelectionCaret:startCaret];
+					}
 				}
-				if (handlesShown && !CGSizeEqualToSize(CGSizeZero, startRect.size)) {
-					[startHandle setHidden:NO];
-				} else {
-					[startHandle setHidden:YES];
+				if (flags.handlesEnabled) {
+					if ([startHandle isHidden] && !CGSizeEqualToSize(CGSizeZero, startRect.size)
+						&& [self shouldShowSelectionHandle:startHandle]) {
+						[startHandle setHidden:NO];
+						flags.handlesShown = YES;
+						[self didShowSelectionHandle:startHandle];
+					}
+					if ([endHandle isHidden] && !CGSizeEqualToSize(CGSizeZero, endRect.size)
+						&& [self shouldShowSelectionHandle:endHandle]) {
+						[endHandle setHidden:NO];
+						flags.handlesShown = YES;
+						[self didShowSelectionHandle:endHandle];
+					}
 				}
 			}
 			
-			if (endChanged) {
+			if (flags.caretsEnabled & endChanged)
 				[endCaret setFrame:endRect];
+			if (flags.handlesEnabled & endChanged) {
 				if (!CGSizeEqualToSize(CGSizeZero, endRect.size)) {
 					[endHandle setCenter:CGPointMake(CGRectGetMidX(endRect), CGRectGetMaxY(endRect))];
-					if (handlesShown)
+					if (flags.handlesShown && [endHandle isHidden] && [self shouldShowSelectionHandle:endHandle]) {
 						[endHandle setHidden:NO];
-				} else {
+						[self didShowSelectionHandle:endHandle];
+					}
+				} else if (![endHandle isHidden]) {
 					[endHandle setHidden:YES];
+					[self didHideSelectionHandle:endHandle];
 				}
 			}
-			if ([[self owner] isFirstResponder])
+			if (flags.caretsEnabled & [endCaret isHidden] && [self shouldShowSelectionCaret:endCaret]) {
 				[endCaret setHidden:NO];
-			[self.owner bringSubviewToFront:self];
+				[self didShowSelectionCaret:endCaret];
+			}
+
 		}
-		if (handlesShown && (!selectedRange || [selectedRange isEmpty] || ![[self owner] isFirstResponder])) {
+		if (flags.caretsEnabled & flags.handlesShown) {
+			if (![startCaret isHidden] && (!selectedRange || [selectedRange isEmpty] || [self shouldHideSelectionCaret:startCaret])) {
+				[startCaret setHidden:YES];
+				[self startBlinking];
+				[self didHideSelectionCaret:startCaret];
+			}
+		}
+		if (flags.handlesEnabled & flags.handlesShown) {
 #ifdef DEVELOPER
 			NSLog(@"Will hide start caret and handles.");
 #endif
-			[startHandle setHidden:YES];
-			[endHandle setHidden:YES];
-			[[self owner] didHideSelectionHandles];
-			[startCaret setHidden:YES];
-			[self startBlinking];
-			handlesShown = NO;
+			if ((!selectedRange || [selectedRange isEmpty] || [self shouldHideSelectionHandle:startHandle])) {
+				[startHandle setHidden:YES];
+				[self didHideSelectionHandle:startHandle];
+			}
+			if ((!selectedRange || [selectedRange isEmpty] || [self shouldHideSelectionHandle:endHandle])) {
+				[endHandle setHidden:YES];
+				[self didHideSelectionHandle:endHandle];
+			}
+			flags.handlesShown = ![startHandle isHidden] || ![endHandle isHidden];
 		}
-		if (!selectedRange || ![[self owner] isFirstResponder]) {
+		if (flags.caretsEnabled && ![endCaret isHidden] && (!selectedRange || [self shouldHideSelectionCaret:endCaret])) {
 			[endCaret setHidden:YES];
+			[self didHideSelectionCaret:endCaret];
 		}
-		if (selectionPathValid && (!selectedRange || rangeChanged)) {
-//			CGPathRelease(selectionPath);
-//			selectionPath = NULL;
-			selectionPathValid = NO;
+		if (flags.selectionPathValid && (!selectedRange || rangeChanged)) {
+			flags.selectionPathValid = NO;
 			if (!selectedRange)
 				((CAShapeLayer *)self.layer).path = NULL;
 		}
-		needsUpdate = NO;
+		flags.needsUpdate = NO;
 		
 		rangeChanged = endChanged || startChanged;
 		if (rangeChanged && (selectedRange && ![selectedRange isEmpty] || lastSelectedTextRange && ![lastSelectedTextRange isEmpty]))
@@ -189,121 +306,79 @@
 }
 
 - (void)setNeedsDisplay {
-	//[super setNeedsDisplay];
-	//if (selectionPathValid) {
-	//	CGPathRelease(selectionPath);
-	//	selectionPath = NULL;
-		selectionPathValid = NO;
-	//}
+	flags.selectionPathValid = NO;
 	[self selectionPath];
-	//[self.owner setSelectionNeedsDisplay];
 }
 
 - (void)setNeedsLayout {
 #ifdef PHI_DIRTY_FRAMES_IN_SELECTION
 	// Begin access to text frames that will be needed in update
-	if ([owner selectedTextRange] && ![self isHidden]) {
+	if ([self selectedTextRange] && ![self isHidden]) {
 		PhiAATreeRange *nodes = [self.owner.textDocument beginContentAccessInRect:self.owner.bounds];
 		[dirtyTextFrames addObject:nodes];
 	}
 #endif
 	[super setNeedsLayout];
-	needsUpdate = YES;
+	flags.needsUpdate = YES;
 }
 
 - (CGPathRef)selectionPath {
+	BOOL allHandlesShown = ![startCaret isHidden] && ![endCaret isHidden];
 	CAShapeLayer *shape = (CAShapeLayer *)self.layer;
 	[self update];
-	if (!selectionPathValid || handlesShown) {
-		//if (selectionPathValid) {
-		//	CGPathRelease(selectionPath);
-		//	selectionPath = NULL;
-			selectionPathValid = NO;
-		//}
-		if (handlesShown) {
+	if (allHandlesShown) {
+		CGMutablePathRef path = CGPathCreateMutable();
+		[[self.owner textDocument] buildPath:path withFirstRect:[self convertRect:[startCaret frame] toView:[self owner]] toLastRect:[self convertRect:[endCaret frame] toView:[self owner]] alignPixels:flags.pixelAligned toView:self];
+		flags.selectionPathValid = YES;
+		shape.path = path;
+		CGPathRelease(path);
+	} else if (!flags.selectionPathValid) {
+		PhiTextRange *selectedRange = (PhiTextRange *) [self selectedTextRange];
+		if ([selectedRange length]) {
 			CGMutablePathRef path = CGPathCreateMutable();
-			[[self.owner textDocument] buildPath:path withFirstRect:[self convertRect:[startCaret frame] toView:[self owner]] toLastRect:[self convertRect:[endCaret frame] toView:[self owner]]];
-			//selectionPath = path;
-			selectionPathValid = YES;
+			[[self.owner textDocument] buildPath:path forRange:selectedRange alignPixels:flags.pixelAligned toView:self];
+			flags.selectionPathValid = YES;
 			shape.path = path;
 			CGPathRelease(path);
 		} else {
-			PhiTextRange *selectedRange = (PhiTextRange *) [self.owner selectedTextRange];
-			if ([selectedRange length]) {
-				CGMutablePathRef path = CGPathCreateMutable();
-				[[self.owner textDocument] buildPath:path forRange:selectedRange];
-				//selectionPath = path;
-				selectionPathValid = YES;
-				shape.path = path;
-				CGPathRelease(path);
-			} else {
-				shape.path = NULL;
-			}
-
+			shape.path = NULL;
 		}
 	}
+
 	return shape.path;
 }
 
 - (void)setSelectionColor:(UIColor *)color {
 	CAShapeLayer *shape = (CAShapeLayer *)self.layer;
-	shape.fillColor = color.CGColor;
+	if (color) {
+		shape.fillColor = color.CGColor;
+	} else {
+		shape.fillColor = nil;
+	}
 }
 - (UIColor *)selectionColor {
 	CAShapeLayer *shape = (CAShapeLayer *)self.layer;
-	return [UIColor colorWithCGColor:shape.fillColor];
+	CGColorRef color = shape.fillColor;
+	if (color)
+		return [UIColor colorWithCGColor:color];
+	return nil;
 }
-/*
-- (void)drawRect:(CGRect)rect {
-	CGRect tRect = [self convertRect:CGRectMake(0, 0, 1, 1) fromView:[self owner]];
-	CGPathRef path = self.selectionPath;
-	CGContextRef context = UIGraphicsGetCurrentContext();
-	if (path && CGRectIntersectsRect([self convertRect:rect toView:[self owner]], CGPathGetBoundingBox(path))) {
-		CGContextBeginPath(context);
-		CGContextSaveGState(context); {
-			CGContextTranslateCTM(context, tRect.origin.x, tRect.origin.y);
-			CGContextScaleCTM(context, tRect.size.width, tRect.size.height);
-			CGContextAddPath(context, path);
-			
-			[selectionColor set];
-			CGContextFillPath(context);
-		} CGContextRestoreGState(context);
-	}
-	//Draw view outline
-#ifdef DEVELOPER
-	CGContextSaveGState(context); {
-		CGContextSetLineWidth(context, 2.5);
-		[[[UIColor yellowColor] colorWithAlphaComponent:0.5] set];
-		UIRectFrameUsingBlendMode(self.bounds, kCGBlendModeScreen);
-	} CGContextRestoreGState(context);
-#endif
-}
-- (void)drawSelectionRect:(CGRect)rect inContext:(CGContextRef)context {
-	[self drawSelectionRect:rect inContext:context withOffset:CGPointZero];
-}
-- (void)drawSelectionRect:(CGRect)rect inContext:(CGContextRef)context withOffset:(CGPoint)offset {
-	CGPathRef path = self.selectionPath;
-	if (path && CGRectIntersectsRect(rect, CGPathGetBoundingBox(path))) {
-		CGContextBeginPath(context);
-		CGContextSaveGState(context); {
-			if (!CGPointEqualToPoint(offset, CGPointZero)) {
-				CGContextTranslateCTM(context, -offset.x, -offset.y);
-			}
-			CGContextAddPath(context, path);
-			
-			CGContextSetFillColorWithColor(context, self.selectionColor.CGColor);
-			CGContextFillPath(context);
 
-			//CGContextSetFillColorWithColor(context, self.lightestSelectionColor.CGColor);
-			//CGContextSetBlendMode(context, kCGBlendModeMultiply);
-			//CGContextFillPath(context);
-			//CGContextSetFillColorWithColor(context, self.darkestSelectionColor.CGColor);
-			//CGContextSetBlendMode(context, kCGBlendModeScreen);
-			//CGContextFillPath(context);
-		} CGContextRestoreGState(context);
+- (void)setSelectionStrokeColor:(UIColor *)color {
+	CAShapeLayer *shape = (CAShapeLayer *)self.layer;
+	if (color) {
+		shape.strokeColor = color.CGColor;
+	} else {
+		shape.strokeColor = nil;
 	}
 }
-/**/
+- (UIColor *)selectionStrokeColor {
+	CAShapeLayer *shape = (CAShapeLayer *)self.layer;
+	CGColorRef color = shape.strokeColor;
+	if (color)
+		return [UIColor colorWithCGColor:color];
+	return nil;
+}
 
 - (void)setupLayer {
 	CAShapeLayer *shape = (CAShapeLayer *)self.layer;
@@ -317,6 +392,12 @@
 										   blue:[[colorComponents objectAtIndex:2] floatValue]
 										  alpha:[[colorComponents objectAtIndex:3] floatValue]];
 }
+- (void)didMoveToWindow {
+	UIScreen *screen = [[self window] screen];
+	if ([screen respondsToSelector:@selector(scale)]) {
+		self.layer.rasterizationScale = [screen scale];
+	}
+}
 - (void)setupSubviews {
 #ifdef TRACE
 	NSLog(@"%@Entering %s...", traceIndent, __FUNCTION__);
@@ -325,7 +406,10 @@
 	[self setUserInteractionEnabled:NO];
 	blinking = YES;
 	lastSelectedTextRange = nil;
-	needsUpdate = YES;
+	flags.needsUpdate = YES;
+	flags.caretsEnabled = YES;
+	flags.handlesEnabled = YES;
+	flags.pixelAligned = YES;
 	
 	[self setStartCaret:[[[PhiTextCaretView alloc] initWithFrame:CGRectZero] autorelease]];
 	[self setEndCaret:[[[PhiTextCaretView alloc] initWithFrame:CGRectZero] autorelease]];
@@ -338,6 +422,24 @@
 #endif
 }
 
+- (id<PhiTextSelectionViewDelegate>)delegate {
+	if (!delegate && [self.owner conformsToProtocol:@protocol(PhiTextSelectionViewDelegate)]) {
+		delegate = self.owner;
+	}
+	return delegate;
+}
+- (PhiTextEditorView *)owner {
+	UIView *view = self.superview;
+	if (!owner && view) {
+		do {
+			if ([view isKindOfClass:[PhiTextEditorView class]]) {
+				self.owner = (PhiTextEditorView *)view;
+				break;
+			}
+		} while (view = view.superview);
+	}
+	return owner;
+}
 - (void)setOwner:(PhiTextEditorView *)view {
 	owner = view;
 	[startHandle setOwner:owner];
@@ -348,24 +450,20 @@
 
 - (void)setStartCaret:(PhiTextCaretView *)view {
 	if (startCaret != view) {
+		BOOL caretHidden = YES;
 		if (startCaret) {
+			caretHidden = [startCaret isHidden];
 			[startCaret setOwner:nil];
 			[startHandle setCaret:nil];
 			[startCaret removeFromSuperview];
 			[startCaret release];
 		}
 		startCaret = view;
-		needsUpdate = YES;
+		flags.needsUpdate = YES;
 		if (startCaret) {
-			[startCaret setOwner:owner];
+			[startCaret setHidden:caretHidden];
+			[startCaret setOwner:self.owner];
 			[startHandle setCaret:startCaret];
-			if (handlesShown) {
-				[startHandle setHidden:NO];
-				[startCaret setHidden:NO];
-			} else {
-				[startHandle setHidden:YES];
-				[startCaret setHidden:YES];
-			}
 			[self addSubview:startCaret];
 			[self sendSubviewToBack:startCaret];
 			[startCaret retain];
@@ -374,21 +472,20 @@
 }
 - (void)setEndCaret:(PhiTextCaretView *)view {
 	if (endCaret != view) {
+		BOOL caretHidden = YES;
 		if (endCaret) {
+			caretHidden = [endCaret isHidden];
 			[endCaret setOwner:nil];
 			[endHandle setCaret:nil];
 			[endCaret removeFromSuperview];
 			[endCaret release];
 		}
 		endCaret = view;
-		needsUpdate = YES;
+		flags.needsUpdate = YES;
 		if (endCaret) {
-			[endCaret setOwner:owner];
+			[endCaret setHidden:caretHidden];
+			[endCaret setOwner:self.owner];
 			[endHandle setCaret:endCaret];
-			if (handlesShown)
-				[endHandle setHidden:NO];
-			else
-				[endHandle setHidden:YES];
 			[self addSubview:endCaret];
 			[self sendSubviewToBack:endCaret];
 			[endCaret retain];
@@ -398,61 +495,56 @@
 
 - (void)setStartHandle:(PhiTextSelectionHandle *)view {
 	if (startHandle != view) {
+		BOOL handleHidden = YES;
 		if (startHandle) {
+			handleHidden = [startHandle isHidden];
 			[startHandle setOwner:nil];
 			[startHandle setCaret:nil];
 			[startHandle removeFromSuperview];
 			[startHandle release];
 		}
 		startHandle = view;
-		needsUpdate = YES;
+		flags.needsUpdate = YES;
 		if (startHandle) {
 			[startHandle retain];
-			[startHandle setOwner:owner];
+			[startHandle setHidden:handleHidden];
+			[startHandle setOwner:self.owner];
 			[startHandle setHandleType:-1];
 			[startHandle setCaret:self.startCaret];
-			if (handlesShown) {
-				[startHandle setHidden:NO];
-				[startCaret setHidden:NO];
-			} else {
-				[startHandle setHidden:YES];
-				[startCaret setHidden:YES];
-			}
 			[self addSubview:startHandle];
 			[self bringSubviewToFront:startHandle];
 		}
 	}
 }
 - (PhiTextSelectionHandle *)startHandle {
-	if (needsUpdate) [self update];
+	if (flags.needsUpdate) [self update];
 	return [[startHandle retain] autorelease];
 }
 - (void)setEndHandle:(PhiTextSelectionHandle *)view {
 	if (endHandle != view) {
+		BOOL handleHidden = YES;
 		if (endHandle) {
+			handleHidden = [endHandle isHidden];
 			[endHandle setOwner:nil];
 			[endHandle setCaret:nil];
 			[endHandle removeFromSuperview];
 			[endHandle release];
 		}
 		endHandle = view;
-		needsUpdate = YES;
+		flags.needsUpdate = YES;
 		if (endHandle) {
 			[endHandle retain];
-			[endHandle setOwner:owner];
+			[endHandle setHidden:handleHidden];
+			[endHandle setOwner:self.owner];
 			[endHandle setHandleType:1];
 			[endHandle setCaret:self.endCaret];
-			if (handlesShown)
-				[endHandle setHidden:NO];
-			else
-				[endHandle setHidden:YES];
 			[self addSubview:endHandle];
 			[self bringSubviewToFront:endHandle];
 		}
 	}
 }
 - (PhiTextSelectionHandle *)endHandle {
-	if (needsUpdate) [self update];
+	if (flags.needsUpdate) [self update];
 	return [[endHandle retain] autorelease];
 }
 

@@ -6,6 +6,7 @@
 //  Copyright 2010 Corin Lawson. All rights reserved.
 //
 
+#import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
 #import <QuartzCore/CADisplayLink.h>
 #import <QuartzCore/CALayer.h>

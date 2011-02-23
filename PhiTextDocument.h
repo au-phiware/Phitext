@@ -71,6 +71,10 @@
 - (CGRect)caretRectForPosition:(PhiTextPosition *)position selectionAffinity:(UITextStorageDirection)affinity inRect:(CGRect)rect;
 - (CGRect)caretRectForPosition:(PhiTextPosition *)position selectionAffinity:(UITextStorageDirection)affinity autoExpand:(BOOL)flag;
 - (CGRect)caretRectForPosition:(PhiTextPosition *)position selectionAffinity:(UITextStorageDirection)affinity autoExpand:(BOOL)flag inRect:(CGRect)rect;
+- (CGRect)caretRectForPosition:(PhiTextPosition *)position selectionAffinity:(UITextStorageDirection)affinity alignPixels:(BOOL)pixelsAligned toView:(UIView *)view;
+- (CGRect)caretRectForPosition:(PhiTextPosition *)position selectionAffinity:(UITextStorageDirection)affinity inRect:(CGRect)rect alignPixels:(BOOL)pixelsAligned toView:(UIView *)view;
+- (CGRect)caretRectForPosition:(PhiTextPosition *)position selectionAffinity:(UITextStorageDirection)affinity autoExpand:(BOOL)flag alignPixels:(BOOL)pixelsAligned toView:(UIView *)view;
+- (CGRect)caretRectForPosition:(PhiTextPosition *)position selectionAffinity:(UITextStorageDirection)affinity autoExpand:(BOOL)flag inRect:(CGRect)rect alignPixels:(BOOL)pixelsAligned toView:(UIView *)view;
 - (UITextPosition *)closestPositionToPoint:(CGPoint)point;
 - (UITextPosition *)closestPositionToPoint:(CGPoint)point withinRange:(PhiTextRange *)range;
 - (UITextRange *)characterRangeAtPoint:(CGPoint)point;
@@ -108,6 +112,8 @@
  */
 - (void)buildPath:(CGMutablePathRef)path forRange:(PhiTextRange *)range;
 - (void)buildPath:(CGMutablePathRef)path withFirstRect:(CGRect)firstRect toLastRect:(CGRect)lastRect;
+- (void)buildPath:(CGMutablePathRef)path withFirstRect:(CGRect)firstRect toLastRect:(CGRect)lastRect alignPixels:(BOOL)pixelsAligned toView:(UIView *)view;
+- (void)buildPath:(CGMutablePathRef)path forRange:(PhiTextRange *)range alignPixels:(BOOL)pixelsAligned toView:(UIView *)view;
 
 - (PhiTextStyle *)styleAtEndOfDocument;
 - (PhiTextStyle *)styleAtPosition:(PhiTextPosition *)position inDirection:(UITextStorageDirection)direction;

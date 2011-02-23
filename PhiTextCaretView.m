@@ -82,6 +82,11 @@ typedef struct PhiCaretState {
 #endif
 	}
 }
+
++ (Class)layerClass {
+	return [CAShapeLayer class];
+}
+
 @synthesize owner;
 @synthesize blinkLength, blinkOnRatio, blinkDelay, blinkTranistionDuration;
 
@@ -104,15 +109,23 @@ typedef struct PhiCaretState {
 	
 	blinkLength = [defaults floatForKey:@"blinkLength"];
 	blinkOnRatio = [defaults floatForKey:@"blinkOnRatio"];
-	self.alpha = 1.0f;
+	self.opaque = NO;
 	NSArray *colorComponents = [defaults arrayForKey:@"caretRGBAColorComponents"];
-	self.backgroundColor = [UIColor colorWithRed:[[colorComponents objectAtIndex:0] floatValue]
+	[(CAShapeLayer *)self.layer setFillColor:[[UIColor colorWithRed:[[colorComponents objectAtIndex:0] floatValue]
 										   green:[[colorComponents objectAtIndex:1] floatValue]
 											blue:[[colorComponents objectAtIndex:2] floatValue]
-										   alpha:[[colorComponents objectAtIndex:3] floatValue]];
+										   alpha:[[colorComponents objectAtIndex:3] floatValue]] CGColor]];
+	self.layer.edgeAntialiasingMask = kCALayerLeftEdge | kCALayerRightEdge;
+	self.layer.masksToBounds = YES;
 	blinkTranistionDuration = [defaults floatForKey:@"blinkTranistionDuration"];;
 	blinkDelay = [defaults floatForKey:@"blinkDelay"];;
+
 	[self setupOrderActions];
+	
+	[super setHidden:YES];
+	if (stateStack) [stateStack release];
+	stateStack = [[NSMutableArray alloc] initWithCapacity:3];
+	
 #ifdef TRACE
 	NSLog(@"%@Exiting %s...", traceIndent, __FUNCTION__);
 #endif
@@ -168,8 +181,6 @@ typedef struct PhiCaretState {
 		blinkOnTimer = nil;
 		blinkOffTimer = nil;
         [self setDefaults];
-		[super setHidden:YES];
-		stateStack = [[NSMutableArray alloc] initWithCapacity:3];
     }
     return self;
 }
@@ -179,10 +190,26 @@ typedef struct PhiCaretState {
 		blinkOnTimer = nil;
 		blinkOffTimer = nil;
         [self setDefaults];
-		[super setHidden:YES];
-		stateStack = [[NSMutableArray alloc] initWithCapacity:3];
 	}
 	return self;
+}
+
+- (void)setFrame:(CGRect)rect {
+	CGMutablePathRef path = CGPathCreateMutable();
+	CGPathAddRect(path, NULL, CGRectMake(0.0, -1.0, rect.size.width, rect.size.height + 2.0));
+	[(CAShapeLayer *)self.layer setPath: path];
+	[super setFrame:rect];
+	[self.layer setBounds:CGRectMake(-1.0, 0.0, rect.size.width + 2.0, rect.size.height)];
+	CGPathRelease(path);
+}
+
+- (void)setBounds:(CGRect)rect {
+	CGMutablePathRef path = CGPathCreateMutable();
+	CGPathAddRect(path, NULL, CGRectMake(rect.origin.x, rect.origin.y - 1.0, rect.size.width, rect.size.height + 2.0));
+	[(CAShapeLayer *)self.layer setPath: path];
+	[super setBounds:rect];
+	[self.layer setBounds:CGRectMake(rect.origin.x - 1.0, rect.origin.y, rect.size.width + 2.0, rect.size.height)];
+	CGPathRelease(path);
 }
 
 - (void)setHidden:(BOOL)hidden {

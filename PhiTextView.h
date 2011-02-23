@@ -7,7 +7,7 @@
 //
 
 #import <UIKit/UIKit.h>
-#import <Foundation/NSAttributedString.h>
+#import <Foundation/Foundation.h>
 #import <CoreText/CoreText.h>
 #import <QuartzCore/QuartzCore.h>
 

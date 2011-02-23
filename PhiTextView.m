@@ -567,6 +567,9 @@ static PhiTextViewSelectionLayerDelegate *sharedSelectionLayerDelegate = nil;
 	 /**/
 }
 - (void)setNeedsDisplay {
+#ifdef TRACE
+	NSLog(@"%@Entering -[%@ %@:%@]...", traceIndent, NSStringFromClass([self class]), NSStringFromSelector(_cmd), NSStringFromCGRect([self frame]));
+#endif
 	//[super setNeedsDisplay];
 	[textLayer setNeedsDisplay];
 	//[selectionLayer setNeedsDisplay];
@@ -574,6 +577,9 @@ static PhiTextViewSelectionLayerDelegate *sharedSelectionLayerDelegate = nil;
 }
 
 - (void)setNeedsDisplayInRect:(CGRect)rect {
+#ifdef TRACE
+	NSLog(@"%@Entering -[%@ %@%@]...", traceIndent, NSStringFromClass([self class]), NSStringFromSelector(_cmd), NSStringFromCGRect(rect));
+#endif
 	//[super setNeedsDisplayInRect:rect];
 	[textLayer setNeedsDisplayInRect:CGRectApplyAffineTransform(rect, CGAffineTransformInvert([textLayer affineTransform]))];
 	//[selectionLayer setNeedsDisplayInRect:CGRectApplyAffineTransform(rect, CGAffineTransformInvert([selectionLayer affineTransform]))];
@@ -587,7 +593,6 @@ static PhiTextViewSelectionLayerDelegate *sharedSelectionLayerDelegate = nil;
 		[bgLayer setValue:[NSNumber numberWithBool:YES] forKey:kPhiTextViewLayerNeedsClear];
 	}
 	[self setFrame:CGRectZero];
-	[self setNeedsDisplay];
 }
 
 - (void)layoutSubviews {

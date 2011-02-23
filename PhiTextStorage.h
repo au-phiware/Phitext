@@ -11,6 +11,7 @@
 @class PhiTextDocument;
 
 @interface PhiTextStorage : NSObject {
+@protected
 	PhiTextDocument *owner;
 	NSMutableAttributedString *text;
 }

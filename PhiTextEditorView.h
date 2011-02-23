@@ -11,8 +11,10 @@
     @abstract   Intended as a replacement for UITextView.
 */
 
+#import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
 #import <CoreGraphics/CoreGraphics.h>
+#import <Phitext/PhiTextSelectionView.h>
 
 @class PhiTextDocument;
 @class PhiTextView;
@@ -68,11 +70,12 @@ typedef enum {
     @abstract    A rich text view.
     @discussion  Implements the UITextInput protocol and backed by NSAttributedString.
 */
-@interface PhiTextEditorView : UIScrollView <UITextInput, UIScrollViewDelegate> {
+@interface PhiTextEditorView : UIScrollView <UITextInput, UIScrollViewDelegate, PhiTextSelectionViewDelegate> {
 @private
 	
 	PhiTextDocument *textDocument;
 	PhiTextSelectionView *selectionView;
+	PhiTextSelectionView *markedTextView;
 	NSMutableArray *textViews;
 	NSMutableSet *reusableTextViews;
 	NSMutableArray *undoStack;
@@ -332,6 +335,7 @@ typedef enum {
  */
 - (CGRect)caretRectForPosition:(UITextPosition *)position;
 - (CGRect)visibleCaretRectForPosition:(UITextPosition *)position;
+- (CGRect)visibleCaretRectForPosition:(UITextPosition *)position alignPixels:(BOOL)pixelsAligned toView:(UIView *)view;
 /*!
  @method     lastRectForRange:
  @abstract   Finds the bounding rectangle of the text on the last line in the specified range.
@@ -397,6 +401,7 @@ typedef enum {
     @abstract   Container for caret(s) and selection controls.
 */
 @property (nonatomic, retain) PhiTextSelectionView *selectionView;
+@property (nonatomic, retain) PhiTextSelectionView *markedTextView;
 /*!
 	@property   selectedTextRange
 	@abstract   Specifies the text that is selected and the insertion point of the editor.
@@ -503,21 +508,6 @@ typedef enum {
  */
 - (void)hideSelectionMagnifierToPoint:(CGPoint)point;
 
-/*!
- @method     didShowSelectionHandles
- @abstract   Called after this receiver's selection view shows it's selection handles
- @discussion The receiver enables it's gesture recognizer for the selection handles.
- The receiver disables it's gesture recognizer for the double tap pan.
- */
-- (void)didShowSelectionHandles;
-/*!
- @method     didHideSelectionHandles
- @abstract   Called after this receiver's selection view hides it's selection handles
- @discussion The receiver disables it's gesture recognizer for the selection handles.
- The receiver enables it's gesture recognizer for the double tap pan.
- */
-- (void)didHideSelectionHandles;
-
 /*! @group Edit Actions and Methods */
 #pragma mark Edit Actions
 
@@ -597,6 +587,8 @@ typedef enum {
  Instead, use changeSelectedRange: 
  */
 @end
+
+
 
 
 

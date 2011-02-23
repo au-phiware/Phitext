@@ -6,6 +6,7 @@
 //  Copyright 2010 Corin Lawson. All rights reserved.
 //
 
+#import <QuartzCore/CAShapeLayer.h>
 #import "PhiTextEditorView.h"
 #import "PhiTextDocument.h"
 #import "PhiTextPosition.h"
@@ -21,10 +22,24 @@
 
 #ifndef PHI_SET_OWNER_NEEDS_DISPLAY_IN_RECT
 #ifdef DEVELOPER
-#define PHI_SET_OWNER_NEEDS_DISPLAY_IN_RECT(_RECT) NSLog(@"[%i] Updating editor rect: %@", __LINE__, NSStringFromCGRect(_RECT)),[owner performSelectorOnMainThread:@selector(setNeedsDisplayInValueRect:) withObject:[NSValue valueWithCGRect:(_RECT)] waitUntilDone:NO]
+#define PHI_SET_OWNER_NEEDS_DISPLAY_IN_RECT(_RECT_) NSLog(@"[%i] Updating editor rect: %@", __LINE__, NSStringFromCGRect(_RECT_)),[owner performSelectorOnMainThread:@selector(setNeedsDisplayInValueRect:) withObject:[NSValue valueWithCGRect:(_RECT_)] waitUntilDone:NO]
 #else
-#define PHI_SET_OWNER_NEEDS_DISPLAY_IN_RECT(_RECT) [owner performSelectorOnMainThread:@selector(setNeedsDisplayInValueRect:) withObject:[NSValue valueWithCGRect:(_RECT)] waitUntilDone:NO]
+#define PHI_SET_OWNER_NEEDS_DISPLAY_IN_RECT(_RECT_) [owner performSelectorOnMainThread:@selector(setNeedsDisplayInValueRect:) withObject:[NSValue valueWithCGRect:(_RECT_)] waitUntilDone:NO]
 #endif
+#endif
+
+#ifndef PHI_CARET_WIDTH
+#define PHI_CARET_WIDTH (2.0)
+#endif
+#ifndef PHI_CARET_OFFSET
+#define PHI_CARET_OFFSET (1.0)
+#endif
+
+#ifndef PHI_CARET_PIXEL_FLOOR_FUNC
+#define PHI_CARET_PIXEL_FLOOR_FUNC PhiFloorPixelToCenter
+#endif
+#ifndef PHI_CARET_PIXEL_CEIL_FUNC
+#define PHI_CARET_PIXEL_CEIL_FUNC PhiCeilPixelToCenter
 #endif
 
 @interface PhiTextFrame (PhiTextDocument)
@@ -40,7 +55,8 @@
 
 CGRect PhiUnionRectFrame (CGRect rect, PhiTextFrame *textFrame) {
 	CGRect frameRect = [textFrame CGRectValue];
-	if ([textFrame isKindOfClass:[PhiTextEmptyFrame class]]) {
+	//if ([textFrame isKindOfClass:[PhiTextEmptyFrame class]])
+	{
 		CGSize tileSize = [textFrame tileSize];
 		if (tileSize.width * tileSize.height > 0.0)
 			frameRect.size = tileSize;
@@ -54,12 +70,35 @@ CGRect PhiUnionRectFrame (CGRect rect, PhiTextFrame *textFrame) {
 
 @end
 
-static CGRect pixelAlignRect(CGRect rect) {
-//	rect.origin.x = floor(rect.origin.x);
-//	rect.origin.y = floor(rect.origin.y);
-//	rect.size.width = ceil(rect.size.width);
-//	rect.size.height = ceil(rect.size.height);
-	return rect;
+typedef CGFloat (*PhiConvertPixelToViewFunction)(CGFloat points, UIView *view);
+
+static CGFloat PhiFloorPixelToEdge(CGFloat points, UIView *view) {
+	CGFloat scale = 1.0;
+	if ([view respondsToSelector:@selector(contentScaleFactor)])
+		scale = [view contentScaleFactor];
+	
+	return floor(points * scale) / scale;
+}
+static CGFloat PhiFloorPixelToCenter(CGFloat points, UIView *view) {
+	CGFloat scale = 1.0;
+	if ([view respondsToSelector:@selector(contentScaleFactor)])
+		scale = [view contentScaleFactor];
+	
+	return (floor(points * scale) + 0.5) / scale;
+}
+static CGFloat PhiCeilPixelToEdge(CGFloat points, UIView *view) {
+	CGFloat scale = 1.0;
+	if ([view respondsToSelector:@selector(contentScaleFactor)])
+		scale = [view contentScaleFactor];
+	
+	return ceil(points * scale) / scale;
+}
+static CGFloat PhiCeilPixelToCenter(CGFloat points, UIView *view) {
+	CGFloat scale = 1.0;
+	if ([view respondsToSelector:@selector(contentScaleFactor)])
+		scale = [view contentScaleFactor];
+	
+	return (ceil(points * scale) - 0.5) / scale;
 }
 
 @implementation PhiTextDocument
@@ -152,7 +191,13 @@ static CGRect pixelAlignRect(CGRect rect) {
 	return textFrames;
 }
 - (CGRect)suggestTileBounds {
-	return CGRectMake(0, 0, wrap?self.bounds.size.width:CGFLOAT_MAX, MIN(MAX([self tileHeightHint], 0.0), self.owner.bounds.size.height));
+	CGRect rv = CGRectMake(0, 0, wrap?self.bounds.size.width:CGFLOAT_MAX, MIN(MAX([self tileHeightHint], 0.0), self.owner.bounds.size.height));
+	
+	if (rv.size.width * rv.size.height == 0.0) {
+		rv.size = CGSizeMake([[UIScreen mainScreen] bounds].size.width, [self tileHeightHint]);
+	}
+	
+	return rv;
 }
 - (PhiTextFrame *)lastEmptyFrame {
 	if (!lastEmptyFrame) {
@@ -311,8 +356,10 @@ static CGRect pixelAlignRect(CGRect rect) {
 	 width = self.bounds.size.width;
 	 }
 	 /**/
-	rect = CGRectMake(self.bounds.origin.x + line.originInDocument.x + offset.x,
-					  self.bounds.origin.y + line.originInDocument.y - line.ascent + offset.y,
+	CGPoint oid = line.originInDocument;
+	CGPoint docOrigin = self.bounds.origin;
+	rect = CGRectMake(docOrigin.x + oid.x + offset.x,
+					  docOrigin.y + oid.y - line.ascent + offset.y,
 					  line.width, line.ascent + line.descent + (includeLeading?line.leading:0.0));
 	
 #ifdef TRACE
@@ -375,7 +422,7 @@ static CGRect pixelAlignRect(CGRect rect) {
 #ifdef TRACE
 	NSLog(@"%@Exiting %s:(%.f, %.f), (%.f, %.f).", traceIndent, __FUNCTION__, CGRectComp(lineRect));
 #endif
-	return pixelAlignRect(lineRect);
+	return lineRect;
 }
 - (CGRect)firstRectForRange:(PhiTextRange *)range {
 	return [self lineRectForRange:range withPosition:(PhiTextPosition *)[range start] selectionAffinity:UITextStorageDirectionForward includeLeading:YES];
@@ -384,7 +431,9 @@ static CGRect pixelAlignRect(CGRect rect) {
 	return [self lineRectForRange:range withPosition:(PhiTextPosition *)[range end] selectionAffinity:UITextStorageDirectionBackward includeLeading:YES];
 }
 
-- (CGRect)caretRectForPosition:(PhiTextPosition *)position selectionAffinity:(UITextStorageDirection)affinity autoExpand:(BOOL)flag inRect:(CGRect)rect {
+- (CGRect)caretRectForPosition:(PhiTextPosition *)position selectionAffinity:(UITextStorageDirection)affinity
+					autoExpand:(BOOL)flag inRect:(CGRect)rect
+				   alignPixels:(BOOL)pixelsAligned toView:(UIView *)view {
 	PhiTextLine *line;
 
 	line = [self searchLineWithPoint:CGPointMake(CGRectGetMinX(rect), CGRectGetMinY(rect))];
@@ -397,12 +446,36 @@ static CGRect pixelAlignRect(CGRect rect) {
 		rect = CGRectIntersection(CGRectUnion(rect, [[line frame] rect]), self.bounds);
 		return CGRectMake(CGRectGetMaxX(rect), CGRectGetMaxY(rect), 0, 0);
 	}
-	return [self caretRectForPosition:position selectionAffinity:affinity autoExpand:flag];
+	return [self caretRectForPosition:position selectionAffinity:affinity
+						   autoExpand:flag alignPixels:pixelsAligned toView:view];
 }
-- (CGRect)caretRectForPosition:(PhiTextPosition *)position selectionAffinity:(UITextStorageDirection)affinity inRect:(CGRect)rect {
-	return [self caretRectForPosition:position selectionAffinity:affinity autoExpand:NO inRect:rect];
+- (CGRect)caretRectForPosition:(PhiTextPosition *)position selectionAffinity:(UITextStorageDirection)affinity
+					autoExpand:(BOOL)flag inRect:(CGRect)rect {
+	return [self caretRectForPosition:position selectionAffinity:affinity
+						   autoExpand:flag inRect:rect alignPixels:NO toView:nil];
 }
-- (CGRect)caretRectForPosition:(PhiTextPosition *)position selectionAffinity:(UITextStorageDirection)affinity autoExpand:(BOOL)flag {
+- (CGRect)caretRectForPosition:(PhiTextPosition *)position selectionAffinity:(UITextStorageDirection)affinity
+						inRect:(CGRect)rect {
+	return [self caretRectForPosition:position selectionAffinity:affinity
+						   autoExpand:NO inRect:rect alignPixels:NO toView:nil];
+}
+- (CGRect)caretRectForPosition:(PhiTextPosition *)position selectionAffinity:(UITextStorageDirection)affinity
+						inRect:(CGRect)rect alignPixels:(BOOL)pixelsAligned toView:(UIView *)view {
+	return [self caretRectForPosition:position selectionAffinity:affinity
+						   autoExpand:NO inRect:rect alignPixels:pixelsAligned toView:view];
+}
+- (CGRect)caretRectForPosition:(PhiTextPosition *)position selectionAffinity:(UITextStorageDirection)affinity
+					alignPixels:(BOOL)pixelsAligned toView:(UIView *)view {
+	return [self caretRectForPosition:position selectionAffinity:affinity
+						   autoExpand:NO alignPixels:pixelsAligned toView:view];
+}
+- (CGRect)caretRectForPosition:(PhiTextPosition *)position selectionAffinity:(UITextStorageDirection)affinity
+					autoExpand:(BOOL)flag {
+	return [self caretRectForPosition:position selectionAffinity:affinity
+						   autoExpand:flag alignPixels:NO toView:nil];
+}
+- (CGRect)caretRectForPosition:(PhiTextPosition *)position selectionAffinity:(UITextStorageDirection)affinity
+					autoExpand:(BOOL)flag alignPixels:(BOOL)pixelsAligned toView:(UIView *)view {
 #ifdef TRACE
 	NSLog(@"%@Entering [PhiTextView caretRectForPosition:%@ selectionAffinity:%s autoExpand:%s]...", traceIndent, position, affinity==UITextStorageDirectionForward?"UITextStorageDirectionForward":"UITextStorageDirectionBackward", flag?"YES":"NO");
 #endif
@@ -417,8 +490,8 @@ static CGRect pixelAlignRect(CGRect rect) {
 		if (line) {
 			startOffset = [line offsetForPosition:start];
 			caret = [self rectForLine:line withOffset:CGPointMake(startOffset, 0.0) includeLeading:YES];
-			caret.size.width = 3.0;
-			caret.origin.x -= 1.0;
+			caret.size.width = (CGFloat)PHI_CARET_WIDTH;
+			caret.origin.x -= (CGFloat)PHI_CARET_OFFSET;
 			if (affinity == UITextStorageDirectionBackward) {
 				PhiTextRange *lineRange = [line textRange];
 				// If our text doesn't span to the next line then adjust width
@@ -440,17 +513,26 @@ static CGRect pixelAlignRect(CGRect rect) {
 			//TODO: Use CTFontGetBoundingBox??
 			caret = CGRectMake(self.bounds.origin.x - 1.0,
 							   self.bounds.origin.y,
-							   3.0, self.defaultStyle.font.ascent + self.defaultStyle.font.descent + self.defaultStyle.font.leading);		
+							   PHI_CARET_WIDTH, self.defaultStyle.font.ascent + self.defaultStyle.font.descent + self.defaultStyle.font.leading);		
 		}
 	}
 	if (caret.origin.x > CGRectGetMaxX(self.bounds)) {
 		caret.origin.x = CGRectGetMaxX(self.bounds);
 	}
 	
+	if (pixelsAligned) {
+		CGRect alignedCaret;
+		alignedCaret.origin = CGPointMake(PHI_CARET_PIXEL_FLOOR_FUNC(caret.origin.x, view),
+										  PHI_CARET_PIXEL_FLOOR_FUNC(caret.origin.y, view));
+		alignedCaret.size = CGSizeMake(PHI_CARET_WIDTH,
+									   PHI_CARET_PIXEL_CEIL_FUNC(CGRectGetMaxY(caret), view) - alignedCaret.origin.y);
+		caret = alignedCaret;
+	}
+	
 #ifdef TRACE
 	NSLog(@"%@Exiting %s:(%.f, %.f), (%.f, %.f).", traceIndent, __FUNCTION__, CGRectComp(caret));
 #endif
-	return pixelAlignRect(caret);
+	return caret;
 }
 - (CGRect)caretRectForPosition:(PhiTextPosition *)position selectionAffinity:(UITextStorageDirection)affinity {
 	return [self caretRectForPosition:position selectionAffinity:affinity autoExpand:NO];
@@ -527,32 +609,89 @@ static CGRect pixelAlignRect(CGRect rect) {
 }
 
 - (void)buildPath:(CGMutablePathRef)path withFirstRect:(CGRect)firstRect toLastRect:(CGRect)lastRect {
+	[self buildPath:path withFirstRect:firstRect toLastRect:lastRect alignPixels:NO toView:nil];
+}
+- (void)buildPath:(CGMutablePathRef)path withFirstRect:(CGRect)firstRect toLastRect:(CGRect)lastRect alignPixels:(BOOL)pixelsAligned toView:(UIView *)view {
 	CGFloat midHeight;
 	BOOL rowspan = (firstRect.origin.y != lastRect.origin.y);
-	//BOOL rectifyPixels = rowspan && (lastRect.origin.y - CGRectGetMaxY(firstRect) <= 2);
 	BOOL rectifyPixels = rowspan && (lastRect.origin.y - CGRectGetMaxY(firstRect) < lastRect.size.height);
 
 	if (rectifyPixels)
 		midHeight = (lastRect.origin.y + CGRectGetMaxY(firstRect)) / 2.0;
-//		midHeight = CGRectGetMaxY(firstRect);
 	
-	CGPathMoveToPoint(path, NULL, firstRect.origin.x, firstRect.origin.y);
-	if (rowspan) {
-		CGPathAddLineToPoint(path, NULL, CGRectGetMaxX(self.bounds), firstRect.origin.y);
-		CGPathAddLineToPoint(path, NULL, CGRectGetMaxX(self.bounds), rectifyPixels?midHeight:lastRect.origin.y);
-	}
-	CGPathAddLineToPoint(path, NULL, CGRectGetMaxX(lastRect), rectifyPixels?midHeight:lastRect.origin.y);
-	CGPathAddLineToPoint(path, NULL, CGRectGetMaxX(lastRect), CGRectGetMaxY(lastRect));
-	if (rowspan) {
-		CGPathAddLineToPoint(path, NULL, self.bounds.origin.x, CGRectGetMaxY(lastRect));
-		CGPathAddLineToPoint(path, NULL, self.bounds.origin.x, rectifyPixels?midHeight:CGRectGetMaxY(firstRect));
-		CGPathAddLineToPoint(path, NULL, firstRect.origin.x, rectifyPixels?midHeight:CGRectGetMaxY(firstRect));
+	if (pixelsAligned) {
+		PhiConvertPixelToViewFunction floorPixelToView;
+		PhiConvertPixelToViewFunction ceilPixelToView;
+		if ([[view layer] isKindOfClass:[CAShapeLayer class]] && [(CAShapeLayer *)[view layer] strokeColor]) {
+			floorPixelToView = PhiFloorPixelToCenter;
+			ceilPixelToView = PhiCeilPixelToCenter;
+		} else {
+			floorPixelToView = PhiFloorPixelToEdge;
+			ceilPixelToView = PhiCeilPixelToEdge;
+		}
+
+		if (rectifyPixels)
+			midHeight = floorPixelToView(midHeight, view);
+
+		CGPathMoveToPoint(path, NULL,
+						  floorPixelToView(firstRect.origin.x, view),
+						  floorPixelToView(firstRect.origin.y, view));
+		if (rowspan) {
+			CGPathAddLineToPoint(path, NULL,
+								 ceilPixelToView(CGRectGetMaxX(self.bounds), view),
+								 floorPixelToView(firstRect.origin.y, view));
+			CGPathAddLineToPoint(path, NULL,
+								 ceilPixelToView(CGRectGetMaxX(self.bounds), view),
+								 rectifyPixels?midHeight:ceilPixelToView(lastRect.origin.y, view));
+			CGPathAddLineToPoint(path, NULL,
+								 ceilPixelToView(CGRectGetMaxX(lastRect), view),
+								 rectifyPixels?midHeight:ceilPixelToView(lastRect.origin.y, view));
+		} else {
+			CGPathAddLineToPoint(path, NULL,
+								 ceilPixelToView(CGRectGetMaxX(lastRect), view),
+								 rectifyPixels?midHeight:floorPixelToView(lastRect.origin.y, view));
+		}
+		CGPathAddLineToPoint(path, NULL,
+							 ceilPixelToView(CGRectGetMaxX(lastRect), view),
+							 ceilPixelToView(CGRectGetMaxY(lastRect), view));
+		if (rowspan) {
+			CGPathAddLineToPoint(path, NULL,
+								 floorPixelToView(self.bounds.origin.x, view),
+								 ceilPixelToView(CGRectGetMaxY(lastRect), view));
+			CGPathAddLineToPoint(path, NULL,
+								 floorPixelToView(self.bounds.origin.x, view),
+								 rectifyPixels?midHeight:floorPixelToView(CGRectGetMaxY(firstRect), view));
+			CGPathAddLineToPoint(path, NULL,
+								 floorPixelToView(firstRect.origin.x, view),
+								 rectifyPixels?midHeight:floorPixelToView(CGRectGetMaxY(firstRect), view));
+		} else {
+			CGPathAddLineToPoint(path, NULL,
+								 floorPixelToView(firstRect.origin.x, view),
+								 ceilPixelToView(CGRectGetMaxY(lastRect), view));
+		}
 	} else {
-		CGPathAddLineToPoint(path, NULL, firstRect.origin.x, CGRectGetMaxY(lastRect));
+		CGPathMoveToPoint(path, NULL, firstRect.origin.x, firstRect.origin.y);
+		if (rowspan) {
+			CGPathAddLineToPoint(path, NULL, CGRectGetMaxX(self.bounds), firstRect.origin.y);
+			CGPathAddLineToPoint(path, NULL, CGRectGetMaxX(self.bounds), rectifyPixels?midHeight:lastRect.origin.y);
+		}
+		CGPathAddLineToPoint(path, NULL, CGRectGetMaxX(lastRect), rectifyPixels?midHeight:lastRect.origin.y);
+		CGPathAddLineToPoint(path, NULL, CGRectGetMaxX(lastRect), CGRectGetMaxY(lastRect));
+		if (rowspan) {
+			CGPathAddLineToPoint(path, NULL, self.bounds.origin.x, CGRectGetMaxY(lastRect));
+			CGPathAddLineToPoint(path, NULL, self.bounds.origin.x, rectifyPixels?midHeight:CGRectGetMaxY(firstRect));
+			CGPathAddLineToPoint(path, NULL, firstRect.origin.x, rectifyPixels?midHeight:CGRectGetMaxY(firstRect));
+		} else {
+			CGPathAddLineToPoint(path, NULL, firstRect.origin.x, CGRectGetMaxY(lastRect));
+		}
 	}
+
 	CGPathCloseSubpath(path);
 }
 - (void)buildPath:(CGMutablePathRef)path forRange:(PhiTextRange *)range {
+	[self buildPath:path forRange:range alignPixels:NO toView:nil];
+}
+- (void)buildPath:(CGMutablePathRef)path forRange:(PhiTextRange *)range alignPixels:(BOOL)pixelsAligned toView:(UIView *)view {
 	CGRect firstRect = [self firstRectForRange:range];
 	CGRect lastRect;
 	if (PhiRangeLength(range)) {
@@ -561,7 +700,7 @@ static CGRect pixelAlignRect(CGRect rect) {
 		lastRect = firstRect;
 	}
 	
-	[self buildPath:path withFirstRect:firstRect toLastRect:lastRect];
+	[self buildPath:path withFirstRect:firstRect toLastRect:lastRect alignPixels:pixelsAligned toView:view];
 }
 
 #pragma mark Hit Testing Methods
@@ -941,7 +1080,7 @@ static CGRect pixelAlignRect(CGRect rect) {
 	return [self beginContentAccessInRange:range andRect:rect updateDisplay:YES];
 }
 
-#define PHI_WILL_OWNER_NEED_DISPLAY_IN_RECT_AND_RANGE(_RECT) if (shouldUpdateDisplay) PHI_SET_OWNER_NEEDS_DISPLAY_IN_RECT(CGRectOffset(_RECT, self.paddingLeft, self.paddingTop))
+#define PHI_WILL_OWNER_NEED_DISPLAY_IN_RECT_AND_RANGE(_RECT_) if (shouldUpdateDisplay) PHI_SET_OWNER_NEEDS_DISPLAY_IN_RECT(CGRectOffset(_RECT_, self.paddingLeft, self.paddingTop))
 
 - (PhiAATreeRange *)beginContentAccessInRange:(PhiTextRange *)range andRect:(CGRect)rect updateDisplay:(BOOL)shouldUpdateDisplay {
 	if (range)
@@ -1008,9 +1147,9 @@ static CGRect pixelAlignRect(CGRect rect) {
 														reverse:NO];
 			}
 		}
-		
+#ifdef DEVELOPER		
 		NSAssert(firstNode, @"Failed to obtain any node from the tree of frames.");
-		
+#endif
 		// When searching with range, first frame must not be the special lastEmptyFrame
 		//  also, when searching with rect lastEmptyFrame may not be contiguous hence it may be way off
 		if (firstNode.object == [self lastEmptyFrame]
@@ -1117,8 +1256,8 @@ static CGRect pixelAlignRect(CGRect rect) {
 				textFrame.origin = tileBounds.origin;
 				invalidRect = PhiUnionRectFrame(invalidRect, textFrame);
 				PHI_WILL_OWNER_NEED_DISPLAY_IN_RECT_AND_RANGE(invalidRect);
-			} else if (!CGRectEqualToRect(invalidRect, CGRectNull)
-					   && !CGRectEqualToRect(invalidRect, [textFrame rect])) {
+			} else if (diffLength // need to check diffLength since rect will not always change (consider one line per frame)
+					   || !CGRectEqualToRect(invalidRect, [textFrame rect])) {
 				invalidRect = PhiUnionRectFrame(invalidRect, textFrame);
 				PHI_WILL_OWNER_NEED_DISPLAY_IN_RECT_AND_RANGE(invalidRect);
 			}
@@ -1436,3 +1575,8 @@ static CGRect pixelAlignRect(CGRect rect) {
 }
 
 @end
+
+
+
+
+

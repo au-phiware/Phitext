@@ -87,9 +87,10 @@
 
 - (CGPoint)originInDocument {
 	CGPoint oid = [self originInFrame];
+	CGRect frameRect = [frame rect];
 	
-	oid.x += frame.origin.x;
-	oid.y = frame.origin.y + frame.size.height + frame.tileOffset.y - oid.y;
+	oid.x += frameRect.origin.x;
+	oid.y = frameRect.origin.y + frameRect.size.height + frame.tileOffset.y - oid.y;
 	
 	return oid;
 }

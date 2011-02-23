@@ -126,8 +126,8 @@
 							atIndex:range.location];
 		else
 			[[[owner undoManager] prepareWithInvocationTarget:self]
-			 insertString:[[text attributedSubstringFromRange:range] string]
-				  atIndex:range.location];
+			 replaceCharactersInRange:NSMakeRange(range.location, 0)
+						   withString:[[text attributedSubstringFromRange:range] string]];
 		[text deleteCharactersInRange:range];
 		invalidRect = [owner invalidateDocumentNSRange:range];
 	}

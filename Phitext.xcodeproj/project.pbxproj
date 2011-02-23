@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 45;
+	objectVersion = 46;
 	objects = {
 
 /* Begin PBXAggregateTarget section */
@@ -1010,7 +1010,7 @@
 		0867D690FE84028FC02AAC07 /* Project object */ = {
 			isa = PBXProject;
 			buildConfigurationList = 1DEB922208733DC00010E9CD /* Build configuration list for PBXProject "Phitext" */;
-			compatibilityVersion = "Xcode 3.1";
+			compatibilityVersion = "Xcode 3.2";
 			developmentRegion = English;
 			hasScannedForEncodings = 1;
 			knownRegions = (
@@ -1100,7 +1100,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "# Build static libs (iPad/iPhone, device/simulator)\nxcodebuild -target \"Phitext iPhone Static Library\" -configuration \"$CONFIGURATION\" \"SDKROOT=\\$PLATFORM_NAME\\$IPHONEOS_DEPLOYMENT_TARGET\" PLATFORM_NAME=iphoneos > /dev/null\nxcodebuild -target \"Phitext iPhone Static Library\" -configuration \"$CONFIGURATION\" \"SDKROOT=\\$PLATFORM_NAME\\$IPHONEOS_DEPLOYMENT_TARGET\" PLATFORM_NAME=iphonesimulator > /dev/null\nxcodebuild -target \"Phitext iPad Static Library\" -configuration \"$CONFIGURATION\" \"SDKROOT=\\$PLATFORM_NAME\\$IPHONEOS_DEPLOYMENT_TARGET\" PLATFORM_NAME=iphoneos > /dev/null\nxcodebuild -target \"Phitext iPad Static Library\" -configuration \"$CONFIGURATION\" \"SDKROOT=\\$PLATFORM_NAME\\$IPHONEOS_DEPLOYMENT_TARGET\" PLATFORM_NAME=iphonesimulator > /dev/null\ncd $BUILD_DIR/$CONFIGURATION\n# lipo iPhone/iPad device+simulator\nfor _device in iPhone iPad\ndo\n\tlipo $_device/iphoneos/lib$PRODUCT_NAME.a $_device/iphonesimulator/lib$PRODUCT_NAME.a -create -output $_device/lib$PRODUCT_NAME.a\ndone\n";
+			shellScript = "# Build static libs (iPad/iPhone, device/simulator)\necho \"Building Phitext iPhone Static Library ($CONFIGURATION) for iphoneos\"\nxcodebuild -target \"Phitext iPhone Static Library\" -configuration \"$CONFIGURATION\" \"SDKROOT=\\$PLATFORM_NAME\\$IPHONEOS_DEPLOYMENT_TARGET\" PLATFORM_NAME=iphoneos > /dev/null\necho \"Building Phitext iPhone Static Library ($CONFIGURATION) for iphonesimulator\"\nxcodebuild -target \"Phitext iPhone Static Library\" -configuration \"$CONFIGURATION\" \"SDKROOT=\\$PLATFORM_NAME\\$IPHONEOS_DEPLOYMENT_TARGET\" PLATFORM_NAME=iphonesimulator > /dev/null\necho \"Building Phitext iPad Static Library ($CONFIGURATION) for iphoneos\"\nxcodebuild -target \"Phitext iPad Static Library\" -configuration \"$CONFIGURATION\" \"SDKROOT=\\$PLATFORM_NAME\\$IPHONEOS_DEPLOYMENT_TARGET\" PLATFORM_NAME=iphoneos > /dev/null\necho \"Building Phitext iPad Static Library ($CONFIGURATION) for iphonesimulator\"\nxcodebuild -target \"Phitext iPad Static Library\" -configuration \"$CONFIGURATION\" \"SDKROOT=\\$PLATFORM_NAME\\$IPHONEOS_DEPLOYMENT_TARGET\" PLATFORM_NAME=iphonesimulator > /dev/null\ncd \"$BUILD_DIR/$CONFIGURATION\"\n# lipo iPhone/iPad device+simulator\nfor _device in iPhone iPad\ndo\n\tif [ -e $_device/iphoneos/lib$PRODUCT_NAME.a ] && [ -e $_device/iphonesimulator/lib$PRODUCT_NAME.a ]\n\tthen\n\t\tlipo $_device/iphoneos/lib$PRODUCT_NAME.a $_device/iphonesimulator/lib$PRODUCT_NAME.a -create -output $_device/lib$PRODUCT_NAME.a\n\telif [ -e $_device/iphoneos/lib$PRODUCT_NAME.a ]\n\tthen\n\t\tcp $_device/iphoneos/lib$PRODUCT_NAME.a $_device/lib$PRODUCT_NAME.a\n\telse\n\t\tcp $_device/iphonesimulator/lib$PRODUCT_NAME.a $_device/lib$PRODUCT_NAME.a\n\tfi\ndone\n";
 			showEnvVarsInLog = 0;
 		};
 		532D9B5A119CD33C008A429C /* ShellScript */ = {
@@ -1174,7 +1174,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "cd Apps\necho ln -sfh ../build/$CONFIGURATION/${PRODUCT_NAME} ${PRODUCT_NAME}\nln -sfh ../build/$CONFIGURATION/${PRODUCT_NAME} ${PRODUCT_NAME}";
+			shellScript = "cd Apps\necho ln -sfh ../build/$CONFIGURATION/${PRODUCT_NAME} ${PRODUCT_NAME}\nln -sfh \"../build/$CONFIGURATION/${PRODUCT_NAME}\" ${PRODUCT_NAME}";
 		};
 		53983F9111A1853B008C18FD /* SymLink */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -1354,12 +1354,14 @@
 				HEADER_SEARCH_PATHS = "$(PROJECT_DIR)/Apps/$(PRODUCT_NAME)/**";
 				INFOPLIST_FILE = "Apps/$(PRODUCT_NAME)/$(PRODUCT_NAME)-Info.plist";
 				IPHONEOS_DEPLOYMENT_TARGET = 3.2;
+				OBJROOT = "$(PROJECT_DIR)/build";
 				OTHER_LDFLAGS = "-ObjC";
 				PREBINDING = NO;
 				PRODUCT_NAME = $PROJECT;
 				SDKROOT = iphoneos;
-				STRIP_INSTALLED_PRODUCT = NO;
+				SYMROOT = "$(SRCROOT)/build";
 				TARGETED_DEVICE_FAMILY = "1,2";
+				VALID_ARCHS = "i386 armv6 armv7";
 			};
 			name = Debug;
 		};
@@ -1377,11 +1379,14 @@
 				HEADER_SEARCH_PATHS = "$(PROJECT_DIR)/Apps/$(PRODUCT_NAME)/**";
 				INFOPLIST_FILE = "Apps/$(PRODUCT_NAME)/$(PRODUCT_NAME)-Info.plist";
 				IPHONEOS_DEPLOYMENT_TARGET = 3.2;
+				OBJROOT = "$(PROJECT_DIR)/build";
 				OTHER_LDFLAGS = "-ObjC";
 				PREBINDING = NO;
 				PRODUCT_NAME = $PROJECT;
 				SDKROOT = iphoneos;
+				SYMROOT = "$(SRCROOT)/build";
 				TARGETED_DEVICE_FAMILY = "1,2";
+				VALID_ARCHS = "armv6 armv7";
 			};
 			name = Release;
 		};

@@ -7,6 +7,7 @@
 //
 //  With thanks to Phillippe
 
+#import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
 #import <QuartzCore/QuartzCore.h>
 
