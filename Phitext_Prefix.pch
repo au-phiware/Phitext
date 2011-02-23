@@ -1,0 +1,31 @@
+//
+// Prefix header for all source files of the 'CocoaTouchStaticLibrary' target in the 'CocoaTouchStaticLibrary' project.
+//
+
+#ifdef __OBJC__
+    #import <Foundation/Foundation.h>
+#endif
+
+//#ifndef TRACE
+//#define TRACE 1
+//#endif
+
+#ifndef DEFAULT_MAGNIFICATION
+#define DEFAULT_MAGNIFICATION 2.0f
+#endif
+
+#ifdef TRACE
+static NSString *traceIndent = @"";
+#else
+#ifndef traceIndent
+#define traceIndent @""
+#endif
+#endif
+
+#ifndef PHI
+#define PHI 0.61803398874989484820458683436563812
+#endif
+
+#ifndef CGRectComp
+#define CGRectComp(RECT) RECT.origin.x, RECT.origin.y, RECT.size.width, RECT.size.height
+#endif
