@@ -182,124 +182,133 @@
 #ifdef TRACE
 	NSLog(@"%@Entering %s...", traceIndent, __FUNCTION__);
 #endif
-	if ([self needsUpdate]) {
-		PhiTextRange *selectedRange = (PhiTextRange *)[self selectedTextRange];
-		BOOL startChanged, endChanged, rangeChanged;
-		endChanged   = CGSizeEqualToSize(CGSizeZero,   endCaret.bounds.size) || !lastSelectedTextRange || [[self owner] comparePosition:[selectedRange end] toPosition:[lastSelectedTextRange end]] != NSOrderedSame;
-		startChanged = CGSizeEqualToSize(CGSizeZero, startCaret.bounds.size) || !lastSelectedTextRange || [[self owner] comparePosition:[selectedRange start] toPosition:[lastSelectedTextRange start]] != NSOrderedSame;
-		rangeChanged = endChanged || startChanged;
-		if (selectedRange && ![self isHidden]) {
-			CGRect startRect;
-			CGRect endRect = [self convertRect:[[self owner] visibleCaretRectForPosition:[selectedRange end] alignPixels:YES toView:self] fromView:[self owner]];
-			if (!endChanged && !CGSizeEqualToSize(CGSizeZero, endRect.size)) {// Maybe the rect has...
-				endChanged = !CGRectEqualToRect(endRect, [endCaret frame]);
-			}
-			if (![selectedRange isEmpty]) {
+	BOOL rangeChanged = NO;
+	PhiTextRange *saveLastSelectedTextRange = [lastSelectedTextRange retain];
+	PhiTextRange *selectedRange = nil;
+	
+	@synchronized(self) {
+		if ([self needsUpdate]) {
+			selectedRange = (PhiTextRange *)[self selectedTextRange];
+			BOOL startChanged, endChanged;
+			endChanged   = CGSizeEqualToSize(CGSizeZero,   endCaret.bounds.size) || !lastSelectedTextRange || [[self owner] comparePosition:[selectedRange end] toPosition:[lastSelectedTextRange end]] != NSOrderedSame;
+			startChanged = CGSizeEqualToSize(CGSizeZero, startCaret.bounds.size) || !lastSelectedTextRange || [[self owner] comparePosition:[selectedRange start] toPosition:[lastSelectedTextRange start]] != NSOrderedSame;
+			rangeChanged = endChanged || startChanged;
+			if (selectedRange && ![self isHidden]) {
+				CGRect startRect;
+				CGRect endRect = [self convertRect:[[self owner] visibleCaretRectForPosition:[selectedRange end] alignPixels:YES toView:self] fromView:[self owner]];
+				if (!endChanged && !CGSizeEqualToSize(CGSizeZero, endRect.size)) {// Maybe the rect has...
+					endChanged = !CGRectEqualToRect(endRect, [endCaret frame]);
+				}
+				if (![selectedRange isEmpty]) {
 #ifdef DEVELOPER
-				NSLog(@"Selected range is not empty.");
+					NSLog(@"Selected range is not empty.");
 #endif
-				startRect = [self convertRect:[[self owner] visibleCaretRectForPosition:[selectedRange start] alignPixels:YES toView:self] fromView:[self owner]];
-				if (!startChanged && !CGSizeEqualToSize(CGSizeZero, startRect.size)) {// Maybe the rect has...
-					startChanged = !CGRectEqualToRect(startRect, [startCaret frame]);
-				}
-				rangeChanged = endChanged || startChanged;
-				if (flags.caretsEnabled & startChanged) {
-					[startCaret setFrame:startRect];
-				}
-				if (flags.handlesEnabled & startChanged) {
-					if (!CGSizeEqualToSize(CGSizeZero, startRect.size)) {
-						[startHandle setCenter:CGPointMake(CGRectGetMidX(startRect), CGRectGetMinY(startRect))];
+					startRect = [self convertRect:[[self owner] visibleCaretRectForPosition:[selectedRange start] alignPixels:YES toView:self] fromView:[self owner]];
+					if (!startChanged && !CGSizeEqualToSize(CGSizeZero, startRect.size)) {// Maybe the rect has...
+						startChanged = !CGRectEqualToRect(startRect, [startCaret frame]);
 					}
-				}
-				if (flags.handlesEnabled & rangeChanged) {
-					CGSize proximityDistance = CGSizeMake(CGRectGetMidX(endRect) - CGRectGetMidX(startRect), CGRectGetMidY(endRect) - CGRectGetMidY(startRect));
-					[startHandle setProximityDistance:proximityDistance];
-					[endHandle setProximityDistance:proximityDistance];
-				}
+					rangeChanged = endChanged || startChanged;
+					if (flags.caretsEnabled & startChanged) {
+						[startCaret setFrame:startRect];
+					}
+					if (flags.handlesEnabled & startChanged) {
+						if (!CGSizeEqualToSize(CGSizeZero, startRect.size)) {
+							[startHandle setCenter:CGPointMake(CGRectGetMidX(startRect), CGRectGetMinY(startRect))];
+						}
+					}
+					if (flags.handlesEnabled & rangeChanged) {
+						CGSize proximityDistance = CGSizeMake(CGRectGetMidX(endRect) - CGRectGetMidX(startRect), CGRectGetMidY(endRect) - CGRectGetMidY(startRect));
+						[startHandle setProximityDistance:proximityDistance];
+						[endHandle setProximityDistance:proximityDistance];
+					}
 #ifdef DEVELOPER
-				NSLog(@"Handles and start caret might be hidden, show them now.");
+					NSLog(@"Handles and start caret might be hidden, show them now.");
 #endif
-				if (flags.caretsEnabled) {
-					if ([startCaret isHidden] && [self shouldShowSelectionCaret:startCaret]) {
-						[self stopBlinking];
-						[startCaret setHidden:NO];
-						[self didShowSelectionCaret:startCaret];
+					if (flags.caretsEnabled) {
+						if ([startCaret isHidden] && [self shouldShowSelectionCaret:startCaret]) {
+							[self stopBlinking];
+							[startCaret setHidden:NO];
+							[self didShowSelectionCaret:startCaret];
+						}
+					}
+					if (flags.handlesEnabled) {
+						if ([startHandle isHidden] && !CGSizeEqualToSize(CGSizeZero, startRect.size)
+							&& [self shouldShowSelectionHandle:startHandle]) {
+							[startHandle setHidden:NO];
+							flags.handlesShown = YES;
+							[self didShowSelectionHandle:startHandle];
+						}
+						if ([endHandle isHidden] && !CGSizeEqualToSize(CGSizeZero, endRect.size)
+							&& [self shouldShowSelectionHandle:endHandle]) {
+							[endHandle setHidden:NO];
+							flags.handlesShown = YES;
+							[self didShowSelectionHandle:endHandle];
+						}
 					}
 				}
-				if (flags.handlesEnabled) {
-					if ([startHandle isHidden] && !CGSizeEqualToSize(CGSizeZero, startRect.size)
-						&& [self shouldShowSelectionHandle:startHandle]) {
-						[startHandle setHidden:NO];
-						flags.handlesShown = YES;
-						[self didShowSelectionHandle:startHandle];
+				
+				if (flags.caretsEnabled & endChanged)
+					[endCaret setFrame:endRect];
+				if (flags.handlesEnabled & endChanged) {
+					if (!CGSizeEqualToSize(CGSizeZero, endRect.size)) {
+						[endHandle setCenter:CGPointMake(CGRectGetMidX(endRect), CGRectGetMaxY(endRect))];
+						if (flags.handlesShown && [endHandle isHidden] && [self shouldShowSelectionHandle:endHandle]) {
+							[endHandle setHidden:NO];
+							[self didShowSelectionHandle:endHandle];
+						}
+					} else if (![endHandle isHidden]) {
+						[endHandle setHidden:YES];
+						[self didHideSelectionHandle:endHandle];
 					}
-					if ([endHandle isHidden] && !CGSizeEqualToSize(CGSizeZero, endRect.size)
-						&& [self shouldShowSelectionHandle:endHandle]) {
-						[endHandle setHidden:NO];
-						flags.handlesShown = YES;
-						[self didShowSelectionHandle:endHandle];
-					}
+				}
+				if (flags.caretsEnabled & [endCaret isHidden] && [self shouldShowSelectionCaret:endCaret]) {
+					[endCaret setHidden:NO];
+					[self didShowSelectionCaret:endCaret];
+				}
+				
+			}
+			if (flags.caretsEnabled & flags.handlesShown) {
+				if (![startCaret isHidden] && (!selectedRange || [selectedRange isEmpty] || [self shouldHideSelectionCaret:startCaret])) {
+					[startCaret setHidden:YES];
+					[self startBlinking];
+					[self didHideSelectionCaret:startCaret];
 				}
 			}
-			
-			if (flags.caretsEnabled & endChanged)
-				[endCaret setFrame:endRect];
-			if (flags.handlesEnabled & endChanged) {
-				if (!CGSizeEqualToSize(CGSizeZero, endRect.size)) {
-					[endHandle setCenter:CGPointMake(CGRectGetMidX(endRect), CGRectGetMaxY(endRect))];
-					if (flags.handlesShown && [endHandle isHidden] && [self shouldShowSelectionHandle:endHandle]) {
-						[endHandle setHidden:NO];
-						[self didShowSelectionHandle:endHandle];
-					}
-				} else if (![endHandle isHidden]) {
+			if (flags.handlesEnabled & flags.handlesShown) {
+#ifdef DEVELOPER
+				NSLog(@"Will hide start caret and handles.");
+#endif
+				if ((!selectedRange || [selectedRange isEmpty] || [self shouldHideSelectionHandle:startHandle])) {
+					[startHandle setHidden:YES];
+					[self didHideSelectionHandle:startHandle];
+				}
+				if ((!selectedRange || [selectedRange isEmpty] || [self shouldHideSelectionHandle:endHandle])) {
 					[endHandle setHidden:YES];
 					[self didHideSelectionHandle:endHandle];
 				}
+				flags.handlesShown = ![startHandle isHidden] || ![endHandle isHidden];
 			}
-			if (flags.caretsEnabled & [endCaret isHidden] && [self shouldShowSelectionCaret:endCaret]) {
-				[endCaret setHidden:NO];
-				[self didShowSelectionCaret:endCaret];
+			if (flags.caretsEnabled && ![endCaret isHidden] && (!selectedRange || [self shouldHideSelectionCaret:endCaret])) {
+				[endCaret setHidden:YES];
+				[self didHideSelectionCaret:endCaret];
 			}
-
-		}
-		if (flags.caretsEnabled & flags.handlesShown) {
-			if (![startCaret isHidden] && (!selectedRange || [selectedRange isEmpty] || [self shouldHideSelectionCaret:startCaret])) {
-				[startCaret setHidden:YES];
-				[self startBlinking];
-				[self didHideSelectionCaret:startCaret];
+			if (flags.selectionPathValid && (!selectedRange || rangeChanged)) {
+				flags.selectionPathValid = NO;
+				if (!selectedRange)
+					((CAShapeLayer *)self.layer).path = NULL;
 			}
+			flags.needsUpdate = NO;
+			
+			rangeChanged = endChanged || startChanged;
+			[lastSelectedTextRange release];
+			lastSelectedTextRange = [selectedRange copy];
 		}
-		if (flags.handlesEnabled & flags.handlesShown) {
-#ifdef DEVELOPER
-			NSLog(@"Will hide start caret and handles.");
-#endif
-			if ((!selectedRange || [selectedRange isEmpty] || [self shouldHideSelectionHandle:startHandle])) {
-				[startHandle setHidden:YES];
-				[self didHideSelectionHandle:startHandle];
-			}
-			if ((!selectedRange || [selectedRange isEmpty] || [self shouldHideSelectionHandle:endHandle])) {
-				[endHandle setHidden:YES];
-				[self didHideSelectionHandle:endHandle];
-			}
-			flags.handlesShown = ![startHandle isHidden] || ![endHandle isHidden];
-		}
-		if (flags.caretsEnabled && ![endCaret isHidden] && (!selectedRange || [self shouldHideSelectionCaret:endCaret])) {
-			[endCaret setHidden:YES];
-			[self didHideSelectionCaret:endCaret];
-		}
-		if (flags.selectionPathValid && (!selectedRange || rangeChanged)) {
-			flags.selectionPathValid = NO;
-			if (!selectedRange)
-				((CAShapeLayer *)self.layer).path = NULL;
-		}
-		flags.needsUpdate = NO;
-		
-		rangeChanged = endChanged || startChanged;
-		if (rangeChanged && (selectedRange && ![selectedRange isEmpty] || lastSelectedTextRange && ![lastSelectedTextRange isEmpty]))
-			[self performSelectorOnMainThread:@selector(setNeedsDisplay) withObject:nil waitUntilDone:YES];
-		[lastSelectedTextRange release];
-		lastSelectedTextRange = [selectedRange copy];
 	}
+
+	if (rangeChanged && (selectedRange && ![selectedRange isEmpty] || saveLastSelectedTextRange && ![saveLastSelectedTextRange isEmpty]))
+		[self performSelectorOnMainThread:@selector(setNeedsDisplay) withObject:nil waitUntilDone:YES];
+	[saveLastSelectedTextRange release];
+	
 #ifdef TRACE
 	NSLog(@"%@Exiting %s...", traceIndent, __FUNCTION__);
 #endif

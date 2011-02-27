@@ -144,7 +144,7 @@ static CGFloat PhiCeilPixelToCenter(CGFloat points, UIView *view) {
 }
 
 @synthesize owner, store, undoManager, tileHeightHint;
-@synthesize wrap, currentColor, defaultStyle;
+@synthesize wrap, currentColor, defaultStyle, baseStyle;
 @synthesize paddingLeft, paddingTop, paddingRight, paddingBottom;
 
 - (void)setStore:(PhiTextStorage *)aStore {
@@ -972,10 +972,10 @@ static CGFloat PhiCeilPixelToCenter(CGFloat points, UIView *view) {
 	if (!CGSizeEqualToSize(contentSize, size)) {
 		[owner setContentSize:size];
 		[(PhiTextEmptyFrame *)[self lastEmptyFrame] setWidth:size.width - [self paddingLeft] - [self paddingRight]];
-		[self.owner.selectionView setNeedsLayout];
 		if (invalidate) {
 			[self invalidateDocument];
 		}
+		[self.owner.selectionView setNeedsLayout];
 	}
 }
 - (void)calculateContentSize {
@@ -1102,182 +1102,72 @@ static CGFloat PhiCeilPixelToCenter(CGFloat points, UIView *view) {
 	if (!(CGRectEqualToRect(CGRectZero, rect) || CGRectEqualToRect(CGRectNull, rect)))
 		yMax = CGRectGetMaxY(rect);
 
-	// Kick off if we dont have any frames
-	if ([textFrames isEmpty] || [[textFrames firstNode] object] == [self lastEmptyFrame]) {
-		if ([[self store] length]) {
-			if (![textFrames isEmpty])
-				[textFrames removeAllObjects];
-			diffLength = 0;
-			textFrame = [[self makeTextFrameInRect:tileBounds beginningAt:0] autoEndContentAccess];
-			[textFrames addObject:textFrame];
-			PHI_WILL_OWNER_NEED_DISPLAY_IN_RECT_AND_RANGE(tileBounds);
-		} else if ([textFrames isEmpty]) {
-			[textFrames addObject:[self lastEmptyFrame]];
-			[self lastEmptyFrame].origin = tileBounds.origin;
-		}
-	}
-
-	// Find first frame... (binary search with shortcut)
-	if ([textFrames count] == 1) {
-		// ...that was easy
-		firstNode = [textFrames firstNode];
-	} else {
-		PhiAATreeRange *validFrameRange = [PhiAATreeRange rangeWithStartNode:[textFrames firstNode] andEndNode:[self lastValidTextFrameNode]];
-		
-		if (validFrameRange.singleton) {
-			firstNode = validFrameRange.start;
-		} else {
-			// Use the appropriate nodeClosestToObject
-			if (CGRectEqualToRect(CGRectZero, rect) || CGRectEqualToRect(CGRectNull, rect)) {
-				if (!range)
-					firstNode = [textFrames firstNode];
-				else
-					firstNode = [textFrames nodeClosestToObject:range
-														inRange:validFrameRange
-												 withComparator:(CFComparatorFunction)PhiTextFrameCompareByRange reverse:NO];
-			} else {
-				if (!range)
-					firstNode = [textFrames nodeClosestToObject:[NSValue valueWithCGRect:rect]
-														inRange:validFrameRange
-												 withComparator:(CFComparatorFunction)PhiTextFrameCompareByRect reverse:NO];
-				else
-					firstNode = [textFrames nodeClosestToObject:range withComparator:(CFComparatorFunction)PhiTextFrameCompareByRangeIn
-													  andObject:[NSValue valueWithCGRect:rect] withComparator:(CFComparatorFunction)PhiTextFrameCompareByRectIn
-														inRange:validFrameRange
-														reverse:NO];
-			}
-		}
-#ifdef DEVELOPER		
-		NSAssert(firstNode, @"Failed to obtain any node from the tree of frames.");
-#endif
-		// When searching with range, first frame must not be the special lastEmptyFrame
-		//  also, when searching with rect lastEmptyFrame may not be contiguous hence it may be way off
-		if (firstNode.object == [self lastEmptyFrame]
-			 && ((range && PhiRangeOffset(range) != [[self store] length])
-				 || (PhiPositionOffset([[firstNode.previous.object textRange] end]) != PhiFrameOffset(firstNode.object))
-				 )
-			)
-			// Note firstNode.previous exists because we have more than one frame (assuming lastEmptyFrame is the last frame, which it should be)
-			firstNode = firstNode.previous;
-	}
-
-	// Find last frame (sequential search (starting at first frame), create frames if needed)
-	lastNode = firstNode;
-	textFrame = (PhiTextFrame *)lastNode.object; //current frame
-	invalidRect = [textFrame CGRectValue];
-	// Setup first string index and frame rect of the next frame
-	startIndex = PhiPositionOffset([[textFrame textRange] end]);
-	startLineNumber = [textFrame firstLineNumber] + [textFrame lineCount];
-	tileBounds.origin.y = CGRectGetMaxY([textFrame rect]);
-	if (tileBounds.size.width && tileBounds.size.height) {
-		//Advance lastNode forward through text frames (beginning content access OR advancing firstNode where appropriate)
-		if (startIndex < [[self store] length]) do {
-			// If no next frame then create one, autoEndContentAccess
-			// If next frame is lastEmptyFrame then replace it, autoEndContentAccess
-			if (lastNode.next && lastNode.next.object == [self lastEmptyFrame])
-				[textFrames pruneAtNode:lastNode.next];
-			if (!lastNode.next) {
+	@synchronized(store) {
+		// Kick off if we dont have any frames
+		if ([textFrames isEmpty] || [[textFrames firstNode] object] == [self lastEmptyFrame]) {
+			if ([[self store] length]) {
+				if (![textFrames isEmpty])
+					[textFrames removeAllObjects];
 				diffLength = 0;
-				[textFrame changeInTextRange];
-				PhiTextFrame *newTextFrame = [self makeTextFrameInRect:CGRectMake(0, 0, tileBounds.size.width, tileBounds.size.height)
-														   beginningAt:startIndex];
-				[newTextFrame setFirstLineNumber:startLineNumber];
-				[textFrames addObject:newTextFrame];
-				[newTextFrame autoEndContentAccess];
-				//NSAssert(lastNode.next != nil, @"New created text frame not appended to tree.");
+				textFrame = [[self makeTextFrameInRect:tileBounds beginningAt:0] autoEndContentAccess];
+				[textFrames addObject:textFrame];
+				PHI_WILL_OWNER_NEED_DISPLAY_IN_RECT_AND_RANGE(tileBounds);
+			} else if ([textFrames isEmpty]) {
+				[textFrames addObject:[self lastEmptyFrame]];
+				[self lastEmptyFrame].origin = tileBounds.origin;
 			}
-			// If next frame is noncontiguous then create one, autoEndContentAccess
-			// Otherwise, next frame is ok, continue
-			else {
-				CFIndex endIndex = PhiFrameOffset(lastNode.next.object);
-				CFIndex diff = [textFrame changeInTextRange];
-				diffLength -= diff;
-				if (startIndex != endIndex) {
-					if (diffLength) {
-						BOOL flag = NO;
-						//flag = [self.store isLineBreakAtIndex:endIndex - 1];
-						// If there is a line break (before and after change) then it is easy: only the current frames needs to change it's text
-						if (flag) {
-							startIndex = endIndex + diff;
-							endIndex = PhiFrameOffset(textFrame);
-							[textFrame setTextRange:[PhiTextRange textRangeWithRange:NSMakeRange
-													 (endIndex, startIndex - endIndex)]];
-							endIndex = PhiPositionOffset([[textFrame textRange] end]);
-							if (startIndex != endIndex) {
-								invalidRect = [lastNode.next.object CGRectValue];
-								[lastNode.next.object invalidateFrame];
-								PHI_WILL_OWNER_NEED_DISPLAY_IN_RECT_AND_RANGE(invalidRect);
-								startIndex = endIndex;
-							}
-							diffLength -= [textFrame changeInTextRange];
-							tileBounds.origin.y = CGRectGetMaxY([textFrame rect]);
-						}
-						// otherwise the next frame needs to change
-						else {
-							invalidRect = [lastNode.next.object CGRectValue];
-							[lastNode.next.object invalidateFrame];
-							PHI_WILL_OWNER_NEED_DISPLAY_IN_RECT_AND_RANGE(invalidRect);
-						}
-					}
-					[(PhiTextFrame *)lastNode.next.object setFirstStringIndex:startIndex];
-					[(PhiTextFrame *)lastNode.next.object setFirstLineNumber:startLineNumber];
+		}
+		
+		// Find first frame... (binary search with shortcut)
+		if ([textFrames count] == 1) {
+			// ...that was easy
+			firstNode = [textFrames firstNode];
+		} else {
+			PhiAATreeRange *validFrameRange = [PhiAATreeRange rangeWithStartNode:[textFrames firstNode] andEndNode:[self lastValidTextFrameNode]];
+			
+			if (validFrameRange.singleton) {
+				firstNode = validFrameRange.start;
+			} else {
+				// Use the appropriate nodeClosestToObject
+				if (CGRectEqualToRect(CGRectZero, rect) || CGRectEqualToRect(CGRectNull, rect)) {
+					if (!range)
+						firstNode = [textFrames firstNode];
+					else
+						firstNode = [textFrames nodeClosestToObject:range
+															inRange:validFrameRange
+													 withComparator:(CFComparatorFunction)PhiTextFrameCompareByRange reverse:NO];
+				} else {
+					if (!range)
+						firstNode = [textFrames nodeClosestToObject:[NSValue valueWithCGRect:rect]
+															inRange:validFrameRange
+													 withComparator:(CFComparatorFunction)PhiTextFrameCompareByRect reverse:NO];
+					else
+						firstNode = [textFrames nodeClosestToObject:range withComparator:(CFComparatorFunction)PhiTextFrameCompareByRangeIn
+														  andObject:[NSValue valueWithCGRect:rect] withComparator:(CFComparatorFunction)PhiTextFrameCompareByRectIn
+															inRange:validFrameRange
+															reverse:NO];
 				}
 			}
-			
-			if (!(startIndex < [self.store length] // startIndex is before the last charater ie next frame is possible
-				&& (
-					(isnan(yMax) || CGRectGetMaxY([textFrame rect]) < yMax)
-					&&
-					(!range || startIndex <= PhiPositionOffset([range end]))
+#ifdef DEVELOPER		
+			NSAssert(firstNode, @"Failed to obtain any node from the tree of frames.");
+#endif
+			// When searching with range, first frame must not be the special lastEmptyFrame
+			//  also, when searching with rect lastEmptyFrame may not be contiguous hence it may be way off
+			if (firstNode.object == [self lastEmptyFrame]
+				&& ((range && PhiRangeOffset(range) != [[self store] length])
+					|| (PhiPositionOffset([[firstNode.previous.object textRange] end]) != PhiFrameOffset(firstNode.object))
 					)
-				))
-				break;
-			
-			// Advance firstNode if necessary, otherwise we'll need to beginConentAccess on the frames after the first
-			if (firstNode == lastNode && (range || !isnan(yMax)) &&
-				(
-				 (!isnan(yMax) && CGRectGetMaxY([(PhiTextFrame *)firstNode.object rect]) < rect.origin.y)
-				 ||
-				 (range && PhiPositionOffset([[(PhiTextFrame *)firstNode.object textRange] end]) < PhiRangeOffset(range))
 				)
-			)
-				firstNode = firstNode.next;
-			
-			// Advance lastNode
-			lastNode = lastNode.next;
-			textFrame = (PhiTextFrame *)lastNode.object;
-			
-			invalidRect = [textFrame CGRectValue];
-			if (CGRectEqualToRect(invalidRect, CGRectNull)
-				|| !CGPointEqualToPoint(invalidRect.origin, tileBounds.origin)) {
-				//TODO: setNeeds(Display|Layout) on owner
-				if ([textFrame beginContentAccess])
-					[textFrame autoEndContentAccess];
-				textFrame.origin = tileBounds.origin;
-				invalidRect = PhiUnionRectFrame(invalidRect, textFrame);
-				PHI_WILL_OWNER_NEED_DISPLAY_IN_RECT_AND_RANGE(invalidRect);
-			} else if (diffLength // need to check diffLength since rect will not always change (consider one line per frame)
-					   || !CGRectEqualToRect(invalidRect, [textFrame rect])) {
-				invalidRect = PhiUnionRectFrame(invalidRect, textFrame);
-				PHI_WILL_OWNER_NEED_DISPLAY_IN_RECT_AND_RANGE(invalidRect);
-			}
-			
-			if (firstNode != lastNode)
-				if (![textFrame beginContentAccess])
-					break;
-			
-			startIndex += PhiRangeLength(textFrame.textRange);
-			startLineNumber += [textFrame lineCount];
-			tileBounds.origin.y += textFrame.size.height;
-		} while (startIndex < [[self store] length]);
-		// Otherwise no need to advance lastNode, check if it's rect needs redisplay
-		else if (CGRectEqualToRect(invalidRect, CGRectNull)
-				 || !CGRectEqualToRect(invalidRect, [textFrame rect])) {
-			invalidRect = PhiUnionRectFrame(invalidRect, textFrame);
-			PHI_WILL_OWNER_NEED_DISPLAY_IN_RECT_AND_RANGE(invalidRect);
+				// Note firstNode.previous exists because we have more than one frame (assuming lastEmptyFrame is the last frame, which it should be)
+				firstNode = firstNode.previous;
 		}
-		if (startIndex >= [[self store] length] && lastNode.next && lastNode.next.object != [self lastEmptyFrame]) {
-			[textFrames pruneAtNode:lastNode.next];
+
+		lastNode = firstNode;
+		// Lob off any old frames
+		while ([firstNode.object rangeValue].location > [[self store] length]) {
+			firstNode = firstNode.previous;
+			[textFrames pruneAtNode:lastNode];
+			lastNode = firstNode;
 			//TODO: finer setNeedsDisplay...
 #ifdef DEVELOPER
 			NSLog(@"[%i] Updating editor.", __LINE__);
@@ -1285,109 +1175,238 @@ static CGFloat PhiCeilPixelToCenter(CGFloat points, UIView *view) {
 			[self.owner performSelectorOnMainThread:@selector(setNeedsDisplay) withObject:nil waitUntilDone:NO];
 			[self.owner performSelectorOnMainThread:@selector(setNeedsLayout) withObject:nil waitUntilDone:NO];
 		}
-		
-		//Advance (backward) firstNode through text frames (beginning content access), just in case  
-		textFrame = (PhiTextFrame *)firstNode.object;
-		startIndex = PhiFrameOffset(textFrame);
-		//startLineNumber = [textFrame firstLineNumber];
-		tileBounds.origin.y = CGRectGetMinY([textFrame rect]) - tileBounds.size.height;
-		while (startIndex > 0 // startIndex is after the first character ie previous frame is possible
-			   && (
-				   (isnan(yMax) || CGRectGetMinY([textFrame rect]) > rect.origin.y)
-				   &&
-				   (!range || startIndex > PhiRangeOffset(range))
-				   )
-			   ) {
-			// If no previous frame then create one
-			if (!firstNode.previous) {
-				//TODO: Need to build frames backwards
-				NSLog(@"TODO: Need to build frames backwards..."); break;
-			} else {
-				CFIndex endIndex = PhiPositionOffset([[firstNode.previous.object textRange] end]);
-				// If previous frame is noncontiguous then fix it
-				if (startIndex != endIndex) {
-					//TODO: Need to fix frames backwards
-					NSLog(@"TODO: Need to fix frames backwards..."); break;
+		// Find last frame (sequential search (starting at first frame), create frames if needed)
+		textFrame = (PhiTextFrame *)lastNode.object; //current frame
+		invalidRect = [textFrame CGRectValue];
+		// Setup first string index and frame rect of the next frame
+		startIndex = PhiPositionOffset([[textFrame textRange] end]);
+		startLineNumber = [textFrame firstLineNumber] + [textFrame lineCount];
+		tileBounds.origin.y = CGRectGetMaxY([textFrame rect]);
+		if (tileBounds.size.width && tileBounds.size.height) {
+			//Advance lastNode forward through text frames (beginning content access OR advancing firstNode where appropriate)
+			if (startIndex < [[self store] length]) do {
+				// If no next frame then create one, autoEndContentAccess
+				// If next frame is lastEmptyFrame then replace it, autoEndContentAccess
+				if (lastNode.next && lastNode.next.object == [self lastEmptyFrame])
+					[textFrames pruneAtNode:lastNode.next];
+				if (!lastNode.next) {
+					diffLength = 0;
+					[textFrame changeInTextRange];
+					PhiTextFrame *newTextFrame = [self makeTextFrameInRect:CGRectMake(0, 0, tileBounds.size.width, tileBounds.size.height)
+															   beginningAt:startIndex];
+					[newTextFrame setFirstLineNumber:startLineNumber];
+					[textFrames addObject:newTextFrame];
+					[newTextFrame autoEndContentAccess];
+					//NSAssert(lastNode.next != nil, @"New created text frame not appended to tree.");
 				}
-			}
-			// Otherwise, previous frame is ok, continue
-			
-			if (![textFrame beginContentAccess])
-				break;
-
-			// Advance firstNode
-			firstNode = firstNode.previous;
-			textFrame = (PhiTextFrame *)firstNode.object;
-			startIndex = PhiFrameOffset(textFrame);
-			//startLineNumber = [textFrame firstLineNumber];
-		}
-		// Finally beginContentAccess on first frame
-		[textFrame beginContentAccess];
-		
-		// But wait, check if lastEmptyFrame is needed...
-		textFrame = (PhiTextFrame *)lastNode.object;
-		if (textFrame == [self lastEmptyFrame]) {
-			[self addToLastValidTextFrameNode:lastNode.previous];
-			
-			// Is it needed?
-			if (![[self store] isLineBreakAtIndex:[[self store] length] - 1] && lastNode.previous) {
-				// Not needed, lob it off
-				PhiAATreeNode *cut = lastNode;
-				lastNode = lastNode.previous;
-				[textFrames pruneAtNode:cut];
-			} else if (lastNode.previous) {
-				tileBounds = [(PhiTextFrame *)lastNode.previous.object rect];
-				tileBounds.origin.y += tileBounds.size.height;
-				startLineNumber = [(PhiTextFrame *)lastNode.previous.object firstLineNumber] + [(PhiTextFrame *)lastNode.previous.object lineCount];
-				if (!CGPointEqualToPoint(textFrame.origin, tileBounds.origin)) {
+				// If next frame is noncontiguous then create one, autoEndContentAccess
+				// Otherwise, next frame is ok, continue
+				else {
+					CFIndex endIndex = PhiFrameOffset(lastNode.next.object);
+					CFIndex diff = [textFrame changeInTextRange];
+					diffLength -= diff;
+					if (startIndex != endIndex) {
+						if (diffLength) {
+							BOOL flag = NO;
+							//flag = [self.store isLineBreakAtIndex:endIndex - 1];
+							// If there is a line break (before and after change) then it is easy: only the current frames needs to change it's text
+							if (flag) {
+								startIndex = endIndex + diff;
+								endIndex = PhiFrameOffset(textFrame);
+								[textFrame setTextRange:[PhiTextRange textRangeWithRange:NSMakeRange
+														 (endIndex, startIndex - endIndex)]];
+								endIndex = PhiPositionOffset([[textFrame textRange] end]);
+								if (startIndex != endIndex) {
+									invalidRect = [lastNode.next.object CGRectValue];
+									[lastNode.next.object invalidateFrame];
+									PHI_WILL_OWNER_NEED_DISPLAY_IN_RECT_AND_RANGE(invalidRect);
+									startIndex = endIndex;
+								}
+								diffLength -= [textFrame changeInTextRange];
+								tileBounds.origin.y = CGRectGetMaxY([textFrame rect]);
+							}
+							// otherwise the next frame needs to change
+							else {
+								invalidRect = [lastNode.next.object CGRectValue];
+								[lastNode.next.object invalidateFrame];
+								PHI_WILL_OWNER_NEED_DISPLAY_IN_RECT_AND_RANGE(invalidRect);
+							}
+						}
+						[(PhiTextFrame *)lastNode.next.object setFirstStringIndex:startIndex];
+						[(PhiTextFrame *)lastNode.next.object setFirstLineNumber:startLineNumber];
+					}
+				}
+				
+				if (!(startIndex < [self.store length] // startIndex is before the last charater ie next frame is possible
+					  && (
+						  (isnan(yMax) || CGRectGetMaxY([textFrame rect]) < yMax)
+						  &&
+						  (!range || startIndex <= PhiPositionOffset([range end]))
+						  )
+					  ))
+					break;
+				
+				// Advance firstNode if necessary, otherwise we'll need to beginConentAccess on the frames after the first
+				if (firstNode == lastNode && (range || !isnan(yMax)) &&
+					(
+					 (!isnan(yMax) && CGRectGetMaxY([(PhiTextFrame *)firstNode.object rect]) < rect.origin.y)
+					 ||
+					 (range && PhiPositionOffset([[(PhiTextFrame *)firstNode.object textRange] end]) < PhiRangeOffset(range))
+					 )
+					)
+					firstNode = firstNode.next;
+				
+				// Advance lastNode
+				lastNode = lastNode.next;
+				textFrame = (PhiTextFrame *)lastNode.object;
+				
+				invalidRect = [textFrame CGRectValue];
+				if (CGRectEqualToRect(invalidRect, CGRectNull)
+					|| !CGPointEqualToPoint(invalidRect.origin, tileBounds.origin)) {
 					//TODO: setNeeds(Display|Layout) on owner
-					invalidRect = [textFrame CGRectValue];
+					if ([textFrame beginContentAccess])
+						[textFrame autoEndContentAccess];
 					textFrame.origin = tileBounds.origin;
 					invalidRect = PhiUnionRectFrame(invalidRect, textFrame);
 					PHI_WILL_OWNER_NEED_DISPLAY_IN_RECT_AND_RANGE(invalidRect);
+				} else if (diffLength // need to check diffLength since rect will not always change (consider one line per frame)
+						   || !CGRectEqualToRect(invalidRect, [textFrame rect])) {
+					invalidRect = PhiUnionRectFrame(invalidRect, textFrame);
+					PHI_WILL_OWNER_NEED_DISPLAY_IN_RECT_AND_RANGE(invalidRect);
 				}
-				[textFrame setFirstLineNumber:startLineNumber];
+				
+				if (firstNode != lastNode)
+					if (![textFrame beginContentAccess])
+						break;
+				
+				startIndex += PhiRangeLength(textFrame.textRange);
+				startLineNumber += [textFrame lineCount];
+				tileBounds.origin.y += textFrame.size.height;
+			} while (startIndex < [[self store] length]);
+			// Otherwise no need to advance lastNode, check if it's rect needs redisplay
+			else if (CGRectEqualToRect(invalidRect, CGRectNull)
+					 || !CGRectEqualToRect(invalidRect, [textFrame rect])) {
+				invalidRect = PhiUnionRectFrame(invalidRect, textFrame);
+				//TODO: Check for null rect (??)
+				PHI_WILL_OWNER_NEED_DISPLAY_IN_RECT_AND_RANGE(invalidRect);
 			}
-		}
-		else {
-			[self addToLastValidTextFrameNode:lastNode];
+			if (startIndex >= [[self store] length] && lastNode.next && lastNode.next.object != [self lastEmptyFrame]) {
+				[textFrames pruneAtNode:lastNode.next];
+				//TODO: finer setNeedsDisplay...
+#ifdef DEVELOPER
+				NSLog(@"[%i] Updating editor.", __LINE__);
+#endif
+				[self.owner performSelectorOnMainThread:@selector(setNeedsDisplay) withObject:nil waitUntilDone:NO];
+				[self.owner performSelectorOnMainThread:@selector(setNeedsLayout) withObject:nil waitUntilDone:NO];
+			}
 			
-			// Is it needed?
-			if ([[self store] isLineBreakAtIndex:[[self store] length] - 1]) {
-				// Is it needed right now?
-				if (PhiPositionOffset(textFrame.textRange.end) == [[self store] length]) {
-					tileBounds = [textFrame rect];
+			//Advance (backward) firstNode through text frames (beginning content access), just in case  
+			textFrame = (PhiTextFrame *)firstNode.object;
+			startIndex = PhiFrameOffset(textFrame);
+			//startLineNumber = [textFrame firstLineNumber];
+			tileBounds.origin.y = CGRectGetMinY([textFrame rect]) - tileBounds.size.height;
+			while (startIndex > 0 // startIndex is after the first character ie previous frame is possible
+				   && (
+					   (isnan(yMax) || CGRectGetMinY([textFrame rect]) > rect.origin.y)
+					   &&
+					   (!range || startIndex > PhiRangeOffset(range))
+					   )
+				   ) {
+				// If no previous frame then create one
+				if (!firstNode.previous) {
+					//TODO: Need to build frames backwards
+					NSLog(@"TODO: Need to build frames backwards..."); break;
+				} else {
+					CFIndex endIndex = PhiPositionOffset([[firstNode.previous.object textRange] end]);
+					// If previous frame is noncontiguous then fix it
+					if (startIndex != endIndex) {
+						//TODO: Need to fix frames backwards
+						NSLog(@"TODO: Need to fix frames backwards..."); break;
+					}
+				}
+				// Otherwise, previous frame is ok, continue
+				
+				if (![textFrame beginContentAccess])
+					break;
+				
+				// Advance firstNode
+				firstNode = firstNode.previous;
+				textFrame = (PhiTextFrame *)firstNode.object;
+				startIndex = PhiFrameOffset(textFrame);
+				//startLineNumber = [textFrame firstLineNumber];
+			}
+			// Finally beginContentAccess on first frame
+			while (textFrame && ![textFrame beginContentAccess]) {
+				firstNode = firstNode.previous;
+				textFrame = (PhiTextFrame *)firstNode.object;
+			}
+			
+			// But wait, check if lastEmptyFrame is needed...
+			textFrame = (PhiTextFrame *)lastNode.object;
+			if (textFrame == [self lastEmptyFrame]) {
+				[self addToLastValidTextFrameNode:lastNode.previous];
+				
+				// Is it needed?
+				if (![[self store] isLineBreakAtIndex:[[self store] length] - 1] && lastNode.previous) {
+					// Not needed, lob it off
+					PhiAATreeNode *cut = lastNode;
+					lastNode = lastNode.previous;
+					[textFrames pruneAtNode:cut];
+				} else if (lastNode.previous) {
+					tileBounds = [(PhiTextFrame *)lastNode.previous.object rect];
 					tileBounds.origin.y += tileBounds.size.height;
-					startLineNumber = [textFrame firstLineNumber] + [textFrame lineCount];
-					textFrame = [self lastEmptyFrame];
-					invalidRect = CGRectNull;
-					if ([[textFrames lastNode] object] == textFrame)
-						invalidRect = [textFrame CGRectValue];
-					if (lastNode.next && lastNode.next.object != textFrame)
-						[textFrames pruneAtNode:lastNode.next];
-					// Does it need to be added?
-					if ([[textFrames lastNode] object] != textFrame)
-						[textFrames addObject:textFrame];
+					startLineNumber = [(PhiTextFrame *)lastNode.previous.object firstLineNumber] + [(PhiTextFrame *)lastNode.previous.object lineCount];
 					if (!CGPointEqualToPoint(textFrame.origin, tileBounds.origin)) {
+						//TODO: setNeeds(Display|Layout) on owner
+						invalidRect = [textFrame CGRectValue];
 						textFrame.origin = tileBounds.origin;
 						invalidRect = PhiUnionRectFrame(invalidRect, textFrame);
 						PHI_WILL_OWNER_NEED_DISPLAY_IN_RECT_AND_RANGE(invalidRect);
 					}
 					[textFrame setFirstLineNumber:startLineNumber];
-					// Should we include it in the search results?
-					if ((!range || PhiFrameOffset(textFrame) == PhiPositionOffset([range end])) && (isnan(yMax) || yMax > tileBounds.origin.y)) {
-						lastNode = lastNode.next;
-						[(PhiTextFrame *)lastNode.object beginContentAccess];
-					}
 				}
-			} else if ([[textFrames lastNode] object] == [self lastEmptyFrame]) {
-				// Not needed, lob it off
-				[textFrames pruneAtNode:[textFrames lastNode]];
 			}
+			else {
+				[self addToLastValidTextFrameNode:lastNode];
+				
+				// Is lastEmptyFrame needed?
+				if ([[self store] isLineBreakAtIndex:[[self store] length] - 1]) {
+					// Is it needed right now?
+					if (PhiPositionOffset(textFrame.textRange.end) == [[self store] length]) {
+						tileBounds = [textFrame rect];
+						tileBounds.origin.y += tileBounds.size.height;
+						startLineNumber = [textFrame firstLineNumber] + [textFrame lineCount];
+						textFrame = [self lastEmptyFrame];
+						invalidRect = CGRectNull;
+						if ([[textFrames lastNode] object] == textFrame)
+							invalidRect = [textFrame CGRectValue];
+						if (lastNode.next && lastNode.next.object != textFrame)
+							[textFrames pruneAtNode:lastNode.next];
+						// Does it need to be added?
+						if ([[textFrames lastNode] object] != textFrame)
+							[textFrames addObject:textFrame];
+						if (!CGPointEqualToPoint(textFrame.origin, tileBounds.origin)) {
+							textFrame.origin = tileBounds.origin;
+							invalidRect = PhiUnionRectFrame(invalidRect, textFrame);
+							PHI_WILL_OWNER_NEED_DISPLAY_IN_RECT_AND_RANGE(invalidRect);
+						}
+						[textFrame setFirstLineNumber:startLineNumber];
+						// Should we include it in the search results?
+						if ((!range || PhiFrameOffset(textFrame) == PhiPositionOffset([range end])) && (isnan(yMax) || yMax > tileBounds.origin.y)) {
+							lastNode = lastNode.next;
+							[(PhiTextFrame *)lastNode.object beginContentAccess];
+						}
+					}
+				} else if ([[textFrames lastNode] object] == [self lastEmptyFrame]) {
+					// Not needed, lob lastEmptyFrame off
+					[textFrames pruneAtNode:[textFrames lastNode]];
+				}
+			}
+		} else {
+			[(PhiTextFrame *)lastNode.object beginContentAccess];
 		}
-	} else {
-		[(PhiTextFrame *)lastNode.object beginContentAccess];
 	}
+	
 #ifdef DEVELOPER
 	NSLog(@"Validated frames from %@ to %@", firstNode, lastNode);
 #endif
@@ -1400,9 +1419,19 @@ static CGFloat PhiCeilPixelToCenter(CGFloat points, UIView *view) {
 	return [self suggestTextSize];
 }
 - (CGSize)suggestTextSize {
-	if (self.wrap)
-		return [self suggestTextSizeWithConstraints:CGSizeMake([self size].width, CGFLOAT_MAX)];
-	return [self suggestTextSizeWithConstraints:CGSizeMake(CGFLOAT_MAX, CGFLOAT_MAX)];
+	CGSize rv = CGSizeMake(CGFLOAT_MAX, CGFLOAT_MAX);
+	CGSize constraints = [self size];
+
+	if (self.wrap) {
+		rv.width = constraints.width;
+		rv = [self suggestTextSizeWithConstraints:rv];
+	} else {
+		rv = [self suggestTextSizeWithConstraints:rv];
+	}
+	if (rv.width < constraints.width)
+		rv.width = constraints.width;
+
+	return rv;
 }
 - (CGSize)suggestTextSizeWithConstraints:(CGSize)constraints {
 #ifdef TRACE
@@ -1433,20 +1462,29 @@ static CGFloat PhiCeilPixelToCenter(CGFloat points, UIView *view) {
 
 #pragma mark Styling Methods
 
-- (PhiTextStyle *)defaultStyle {
-	if (!defaultStyle) {
-		defaultStyle = [[PhiTextStyle alloc] init];
+- (PhiTextStyle *)baseStyle {
+	if (!baseStyle) {
+		baseStyle = [[PhiTextStyle alloc] init];
 		
 		CTFontRef font = CTFontCreateWithName(CFSTR("Helvetica"), 17.4, NULL);
-		defaultStyle.font = [PhiTextFont fontWithCTFont:font];
+		baseStyle.font = [PhiTextFont fontWithCTFont:font];
 		CFRelease(font);
 		
-		defaultStyle.color = [[self currentColor] CGColor];
+		baseStyle.color = [[self currentColor] CGColor];
+	}
+	return baseStyle;
+}
+- (PhiTextStyle *)defaultStyle {
+	if (!defaultStyle) {
+		defaultStyle = [[self baseStyle] copy];
 	}
 	
 	return defaultStyle;
 }
 
+- (void)addBaseStyle:(PhiTextStyle *)style {
+	[self setBaseStyle:[[self baseStyle] styleWithAddedStyle:style]];
+}
 - (void)addDefaultStyle:(PhiTextStyle *)style {
 	[self setDefaultStyle:[[self defaultStyle] styleWithAddedStyle:style]];
 }
@@ -1569,6 +1607,7 @@ static CGFloat PhiCeilPixelToCenter(CGFloat points, UIView *view) {
 		[lastEmptyFrame release];
 		lastEmptyFrame = nil;
 	}
+	[self setBaseStyle:nil];
 	[self setDefaultStyle:nil];
 	[self setCurrentColor:nil];
     [super dealloc];

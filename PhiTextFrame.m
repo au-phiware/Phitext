@@ -526,7 +526,11 @@ CFIndex PhiTextFrameBSearchLineWithPoint (CTFrameRef textFrame, CFArrayRef textL
 #endif
 	if (firstStringIndex >= 0 && path && document && [document store]) {
 		if (!textFrame) {
-			[self _validateFrame];
+			if ([[document store] length] >= firstStringIndex) {
+				[self _validateFrame];
+			} else {
+				includeGeometry = NO;
+			}
 		}
 		if (includeGeometry)
 			[self validateFrameRect];
@@ -725,6 +729,8 @@ CFIndex PhiTextFrameBSearchLineWithPoint (CTFrameRef textFrame, CFArrayRef textL
 	if ([self beginTextAccess]) {
 		rv = [[textRange retain] autorelease];
 		[self autoEndContentAccess];
+	} else {
+		rv = [PhiTextRange textRangeWithPosition:[PhiTextPosition textPositionWithPosition:firstStringIndex]];
 	}
 	
 	return rv;

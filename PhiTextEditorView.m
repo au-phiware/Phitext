@@ -551,7 +551,15 @@
 		}
 		[self changeSelectedRange:lastSelectedTextRange scroll:YES endUndoGrouping:NO];
 		[undoStack removeLastObject];
-		self.currentTextStyle = lastCurrentTextStyle;
+		if (lastSelectedTextRange && [lastSelectedTextRange.end isEqual:[self endOfDocument]]) {
+			self.textDocument.defaultStyle = lastCurrentTextStyle;
+			[[self selectionView] setNeedsLayout];
+		}
+		if (lastCurrentTextStyle != self.currentTextStyle) {
+			self.currentTextStyle = lastCurrentTextStyle;
+			[[self selectionView] setNeedsLayout];
+		}
+
 		[lastCurrentTextStyle release];
 	}
 }
@@ -579,7 +587,14 @@
 		}
 		[self changeSelectedRange:lastSelectedTextRange scroll:YES endUndoGrouping:NO];
 		[redoStack removeLastObject];
-		self.currentTextStyle = lastCurrentTextStyle;
+		if (lastSelectedTextRange && [lastSelectedTextRange.end isEqual:[self endOfDocument]]) {
+			self.textDocument.defaultStyle = lastCurrentTextStyle;
+			[[self selectionView] setNeedsLayout];
+		}
+		if (lastCurrentTextStyle != self.currentTextStyle) {
+			self.currentTextStyle = lastCurrentTextStyle;
+			[[self selectionView] setNeedsLayout];
+		}
 		[lastCurrentTextStyle release];
 	}
 }
@@ -1344,7 +1359,11 @@
 - (void)setTextStyleForSelectedRange:(PhiTextStyle *)style {
 	if (!self.selectedTextRange || self.selectedTextRange.empty) {
 		self.currentTextStyle = style;
-		//TODO: redisplay caret and/or line with new line height
+		if ([self.selectedTextRange.start isEqual:[self endOfDocument]]) {
+			[self.textDocument setDefaultStyle:style];
+			[[self selectionView] setNeedsLayout];
+		}
+		//TODO: redisplay caret and/or line with new line height (?)
 	} else {
 		[self.textDocument setStyle:style range:(PhiTextRange *)self.selectedTextRange];
 		[[self selectionView] setNeedsLayout];
@@ -3008,5 +3027,11 @@
 												toPosition:[self endOfDocument]]];
 	[self showMenu];
 }
+
+#ifdef DEVELOPER
+- (void)setContentSize:(CGSize)size {
+	[super setContentSize:size];
+}
+#endif
 
 @end

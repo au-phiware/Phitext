@@ -808,10 +808,14 @@
 	NSUInteger batchCount = 0;
 	
 	if (![self isEmpty]) {
-		[self __lockForReading]; {
+		if (!state->extra[0])
+			[self __lockForReading];
+		{
 			batchCount = [root countByEnumeratingWithState:state objects:stackbuf count:len];
 			state->mutationsPtr = &version;
-		} [self __unlock];
+		}
+		if (!batchCount)
+			[self __unlock];
 	}
 	
 	return batchCount;

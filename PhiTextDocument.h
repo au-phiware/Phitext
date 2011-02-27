@@ -28,6 +28,7 @@
 	PhiTextStorage *store;
 	
 	UIColor *currentColor;
+	PhiTextStyle *baseStyle;
 	PhiTextStyle *defaultStyle;
 	CGFloat paddingLeft, paddingTop, paddingRight, paddingBottom;
 	BOOL wrap;
@@ -52,6 +53,7 @@
 
 @property (nonatomic, readonly) PhiAATree *textFrames;
 @property (nonatomic, retain) UIColor *currentColor;
+@property (nonatomic, retain) PhiTextStyle *baseStyle;
 @property (nonatomic, retain) PhiTextStyle *defaultStyle;
 @property (nonatomic) CGFloat paddingLeft, paddingTop, paddingRight, paddingBottom;
 @property (nonatomic, getter=willWrap) BOOL wrap;
@@ -115,6 +117,8 @@
 - (void)buildPath:(CGMutablePathRef)path withFirstRect:(CGRect)firstRect toLastRect:(CGRect)lastRect alignPixels:(BOOL)pixelsAligned toView:(UIView *)view;
 - (void)buildPath:(CGMutablePathRef)path forRange:(PhiTextRange *)range alignPixels:(BOOL)pixelsAligned toView:(UIView *)view;
 
+- (void)addBaseStyle:(PhiTextStyle *)style;
+- (void)addDefaultStyle:(PhiTextStyle *)style;
 - (PhiTextStyle *)styleAtEndOfDocument;
 - (PhiTextStyle *)styleAtPosition:(PhiTextPosition *)position inDirection:(UITextStorageDirection)direction;
 - (PhiTextStyle *)styleFromPosition:(PhiTextPosition *)position toFarthestEffectivePosition:(PhiTextPosition **)endPtr notBeyondPosition:(PhiTextPosition *)limitingPosition;
