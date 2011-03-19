@@ -59,7 +59,6 @@
 @synthesize inputView, inputAccessoryView;
 @synthesize selectedTextRange, markedTextRange, markedTextStyle;
 @synthesize autocapitalizationType, autocorrectionType, keyboardType, keyboardAppearance, returnKeyType;
-@synthesize menuTargetRect;
 @synthesize currentTextStyle;
 
 + (void)initialize {
@@ -140,10 +139,10 @@
 #endif
 	}
 }
-- (BOOL)respondsToSelector:(SEL)aSelector {
+//- (BOOL)respondsToSelector:(SEL)aSelector {
 //	NSLog(@"respondsToSelector:%@", NSStringFromSelector(aSelector));
-	return [super respondsToSelector:(SEL)aSelector];
-}
+//	return [super respondsToSelector:(SEL)aSelector];
+//}
 
 #pragma mark Helper Methods
 
@@ -2760,38 +2759,48 @@
 - (void)willHideMenu {
 	menuPageNumber = 0;
 }
+- (CGRect)menuTargetRect {
+	if (CGRectEqualToRect(menuTargetRect, CGRectNull)) {
+		PhiTextRange *selectedRange = (PhiTextRange *)[self selectedTextRange];
+		if ([selectedRange isEmpty]) {
+			[self.selectionView update];
+			menuTargetRect = [self convertRect:self.selectionView.endHandle.caret.bounds fromView:self.selectionView.endHandle.caret];
+		} else {
+			menuTargetRect = CGPathGetBoundingBox([selectionView selectionPath]);
+		}
+		if (CGRectIntersectsRect(menuTargetRect, self.bounds)) {
+			menuTargetRect = CGRectIntersection(menuTargetRect, self.bounds);
+			if (menuTargetRect.size.height > 40.0 && self.bounds.size.height > 36.0
+				&& menuTargetRect.size.height >= self.bounds.size.height - 36.0) {
+				//menuTargetRect is too big, make it a little smaller so that menu will show nicely at bottom
+				menuTargetRect.size.height -= 40.0;
+			}
+		}
+	}
+	return menuTargetRect;
+}
 - (void)showMenu {
 #ifdef TRACE
 	NSLog(@"%@Entering %s...", traceIndent, __FUNCTION__);
 #endif
 	if ([self isFirstResponder]) {
-		CGRect targetRect = CGRectNull;
 		UIMenuController *menu = [UIMenuController sharedMenuController];
 		PhiTextRange *selectedRange = (PhiTextRange *)[self selectedTextRange];
 		
 		if (selectedRange) {
+			CGRect targetRect = self.menuTargetRect;
 			if ([selectedRange isEmpty]) {
 				//DONE: use selection view's end caret frame instead of recalculating the rect
 				if (flags.menuArrowDirectionOverride) {
 					[menu setArrowDirection:UIMenuControllerArrowDefault];
 					flags.menuArrowDirectionOverride = NO;
 				}
-				[self.selectionView update];
-				targetRect = [self convertRect:self.selectionView.endHandle.caret.bounds fromView:self.selectionView.endHandle.caret];
-			} else {
-				targetRect = CGPathGetBoundingBox([selectionView selectionPath]);
 			}
 			if (CGRectIntersectsRect(targetRect, self.bounds)) {
-				targetRect = CGRectIntersection(targetRect, self.bounds);
-				if (targetRect.size.height > 40.0 && self.bounds.size.height > 36.0
-					&& targetRect.size.height >= self.bounds.size.height - 36.0) {
-					targetRect.size.height -= 40.0; //targetRect is too big, make it a little smaller so that menu will show nicely at bottom
-				}
 				if (flags.menuArrowDirectionOverride) {
 					[menu setArrowDirection:UIMenuControllerArrowDefault];
 					flags.menuArrowDirectionOverride = NO;
 				}
-				menuTargetRect = targetRect;
 				[menu setTargetRect:menuTargetRect inView:self];
 				if (CGRectGetMinY([self convertRect:targetRect toView:nil]) > 60) {//[menu menuFrame] is not accurate!
 					//menu will be above
@@ -2849,6 +2858,7 @@
 		[self willHideMenu];
 		[menu setMenuVisible:NO animated:YES];
 	}
+	menuTargetRect = CGRectNull;
 	flags.menuShown = NO;
 }
 - (BOOL)enableMenuPaging {
