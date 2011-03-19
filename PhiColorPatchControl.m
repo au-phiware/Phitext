@@ -178,15 +178,40 @@
 	CAShapeLayer *theLayer = (CAShapeLayer *)self.layer;
 	if (!CGColorEqualToColor(color.CGColor, theLayer.fillColor)) {
 		BOOL needsResetup = NO;
-		if (color.CGColor) {
-			if (!theLayer.fillColor)
-				needsResetup = YES;
-			theLayer.fillColor = color.CGColor;
-		} else {
+		CGColorRef rgbColor = color.CGColor;
+
+		if (!rgbColor) {
 			if (theLayer.fillColor)
 				needsResetup = YES;
 			theLayer.fillColor = NULL;
+		} else {
+			CGColorSpaceModel csm = CGColorSpaceGetModel(CGColorGetColorSpace(rgbColor));
+			if (!theLayer.fillColor)
+				needsResetup = YES;
+
+			if (csm == kCGColorSpaceModelCMYK || csm == kCGColorSpaceModelMonochrome) {
+				CGColorSpaceRef s = CGColorSpaceCreateDeviceRGB();
+				CGFloat rgbComponents[4] = {0.0, 0.0, 0.0, 1.0};
+				const CGFloat *colorComponents = CGColorGetComponents(rgbColor);
+				
+				if (csm == kCGColorSpaceModelCMYK) {
+					rgbComponents[0] = (1.0 - colorComponents[0]) * (1.0 - colorComponents[3]);
+					rgbComponents[1] = (1.0 - colorComponents[1]) * (1.0 - colorComponents[3]);
+					rgbComponents[2] = (1.0 - colorComponents[2]) * (1.0 - colorComponents[3]);
+					rgbComponents[3] = colorComponents[4];
+				} else if (csm == kCGColorSpaceModelMonochrome) {
+					rgbComponents[0] = rgbComponents[1] = rgbComponents[2] = colorComponents[0];
+					rgbComponents[3] = colorComponents[1];
+				}
+
+				rgbColor = CGColorCreate(s, rgbComponents);
+				theLayer.fillColor = rgbColor;
+				CGColorRelease(rgbColor);
+			} else {
+				theLayer.fillColor = rgbColor;
+			}
 		}
+		
 		if (needsResetup) {
 			[self setupPath];
 		}
