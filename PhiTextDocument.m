@@ -1595,6 +1595,8 @@ static CGFloat PhiCeilPixelToCenter(CGFloat points, UIView *view) {
 }
 
 - (void)dealloc {
+	[[NSNotificationCenter defaultCenter] removeObserver:self];
+
 	if (textFrames) {
 		[textFrames release];
 		textFrames = nil;
