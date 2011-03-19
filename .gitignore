@@ -1,4 +1,18 @@
+# xcode noise
+build
+Build
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+*.xcuserdatad
+*.xcworkspace
+xcuserdata
+
+# osx noise
 .DS_Store
-build/**/*
-*.sw?
+profile
+
+# vim noise
+*.sw*
 *~
