@@ -14,7 +14,6 @@
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
 #import <CoreGraphics/CoreGraphics.h>
-#import <Phitext/PhiTextSelectionView.h>
 
 @class PhiTextDocument;
 @class PhiTextView;
@@ -24,6 +23,7 @@
 @class PhiTextRange;
 @class PhiTextPosition;
 @class PhiTextStyle;
+@protocol PhiTextSelectionViewDelegate;
 
 #ifndef PHI_CLAMP
 #define PHI_CLAMP(X, X_MIN, X_MAX) (MIN(MAX(X, X_MIN), X_MAX))
@@ -407,7 +407,7 @@ typedef enum {
 	@abstract   Specifies the text that is selected and the insertion point of the editor.
 	@discussion An empty selected text range represents a caret.
  */
-@property (readonly, copy) UITextRange *selectedTextRange;
+@property (readwrite, copy) UITextRange *selectedTextRange;
 
 @property (nonatomic) UITextStorageDirection selectionAffinity;
 - (UITextStorageDirection)selectionAffinityForPosition:(PhiTextPosition *)position;
