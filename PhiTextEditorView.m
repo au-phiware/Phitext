@@ -39,6 +39,14 @@
 @end
 #endif
 
+#pragma mark Global Fallback Defaults
+
+#define PHI_TILE_WIDTH_HINT      [[UIScreen mainScreen] applicationFrame].size.width
+#define PHI_TILE_HEIGHT_HINT     64.0
+#define PHI_AUTO_SCROLL_GAP      50.0f
+#define PHI_AUTO_SCROLL_DURATION 0.3f
+#define PHI_AUTO_SCROLL_SPEED    1.62f
+
 #pragma mark -
 
 @interface PhiTextEditorView ()
@@ -60,89 +68,6 @@
 @synthesize selectedTextRange, markedTextRange, markedTextStyle;
 @synthesize autocapitalizationType, autocorrectionType, keyboardType, keyboardAppearance, returnKeyType;
 @synthesize currentTextStyle;
-
-+ (void)initialize {
-	CFStringRef suiteName = CFSTR("com.phitext");
-	CGFloat aFloat;
-	int anInt;
-	CFNumberRef aNumberValue;
-	
-	CFPropertyListRef last = CFPreferencesCopyAppValue(CFSTR("magnifierClassName"), suiteName);
-	if (last) {
-		CFRelease(last);
-	} else {
-		aFloat = [[UIScreen mainScreen] applicationFrame].size.width;
-		aNumberValue = CFNumberCreate(NULL, kCFNumberCGFloatType, &aFloat);
-		CFPreferencesSetAppValue(CFSTR("tileWidthHint"), aNumberValue, suiteName);
-		CFRelease(aNumberValue);
-		
-		aFloat = 64.0;
-		aNumberValue = CFNumberCreate(NULL, kCFNumberCGFloatType, &aFloat);
-		CFPreferencesSetAppValue(CFSTR("tileHeightHint"), aNumberValue, suiteName);
-		CFRelease(aNumberValue);
-		
-		aFloat = 50.0f;
-		aNumberValue = CFNumberCreate(NULL, kCFNumberCGFloatType, &aFloat);
-		CFPreferencesSetAppValue(CFSTR("autoScrollGap"), aNumberValue, suiteName);
-		CFRelease(aNumberValue);
-		
-		aFloat = 0.3f;
-		aNumberValue = CFNumberCreate(NULL, kCFNumberCGFloatType, &aFloat);
-		CFPreferencesSetAppValue(CFSTR("autoScrollDuration"), aNumberValue, suiteName);
-		CFRelease(aNumberValue);
-		
-		aFloat = 1.0f + PHI;
-		aNumberValue = CFNumberCreate(NULL, kCFNumberCGFloatType, &aFloat);
-		CFPreferencesSetAppValue(CFSTR("autoScrollSpeed"), aNumberValue, suiteName);
-		CFRelease(aNumberValue);
-		
-		anInt = UITextAutocapitalizationTypeSentences;
-		aNumberValue = CFNumberCreate(NULL, kCFNumberIntType, &anInt);
-		CFPreferencesSetAppValue(CFSTR("autocapitalizationType"), aNumberValue, suiteName);
-		CFRelease(aNumberValue);
-		anInt = UITextAutocorrectionTypeDefault;
-		aNumberValue = CFNumberCreate(NULL, kCFNumberIntType, &anInt);
-		CFPreferencesSetAppValue(CFSTR("autocorrectionType"), aNumberValue, suiteName);
-		CFRelease(aNumberValue);
-		anInt = UIKeyboardTypeDefault;
-		aNumberValue = CFNumberCreate(NULL, kCFNumberIntType, &anInt);
-		CFPreferencesSetAppValue(CFSTR("keyboardType"), aNumberValue, suiteName);
-		CFRelease(aNumberValue);
-		anInt = UIKeyboardAppearanceDefault;
-		aNumberValue = CFNumberCreate(NULL, kCFNumberIntType, &anInt);
-		CFPreferencesSetAppValue(CFSTR("keyboardAppearance"), aNumberValue, suiteName);
-		CFRelease(aNumberValue);
-		anInt = UIReturnKeyDefault;
-		aNumberValue = CFNumberCreate(NULL, kCFNumberIntType, &anInt);
-		CFPreferencesSetAppValue(CFSTR("returnKeyType"), aNumberValue, suiteName);
-		CFRelease(aNumberValue);
-		anInt = 0;
-		aNumberValue = CFNumberCreate(NULL, kCFNumberIntType, &anInt);
-		CFPreferencesSetAppValue(CFSTR("enablesReturnKeyAutomatically"), aNumberValue, suiteName);
-		CFPreferencesSetAppValue(CFSTR("secureTextEntry"), aNumberValue, suiteName);
-		CFPreferencesSetAppValue(CFSTR("enableMenuPaging"), aNumberValue, suiteName);
-		CFRelease(aNumberValue);
-		anInt = 1;
-		aNumberValue = CFNumberCreate(NULL, kCFNumberIntType, &anInt);
-		CFPreferencesSetAppValue(CFSTR("enableMenuPositionAdjustment"), aNumberValue, suiteName);
-		CFPreferencesSetAppValue(CFSTR("editable"), aNumberValue, suiteName);
-		CFRelease(aNumberValue);
-		
-		CFPreferencesSetAppValue(CFSTR("textDocumentClassName"), CFSTR("PhiTextDocument"), suiteName);
-		CFPreferencesSetAppValue(CFSTR("selectionViewClassName"), CFSTR("PhiTextSelectionView"), suiteName);
-		CFPreferencesSetAppValue(CFSTR("selectionModifierClassName"), CFSTR("PhiTextSelectionHandleRecognizer"), suiteName);
-		CFPreferencesSetAppValue(CFSTR("tokenizerClassName"), CFSTR("PhiTextInputTokenizer"), suiteName);
-		CFPreferencesSetAppValue(CFSTR("magnifierClassName"), CFSTR("PhiTextMagnifier"), suiteName);
-		
-#ifdef PHI_SYNC_DEFAULTS
-		CFPreferencesAppSynchronize(suiteName);
-#endif
-	}
-}
-//- (BOOL)respondsToSelector:(SEL)aSelector {
-//	NSLog(@"respondsToSelector:%@", NSStringFromSelector(aSelector));
-//	return [super respondsToSelector:(SEL)aSelector];
-//}
 
 #pragma mark Helper Methods
 
@@ -219,12 +144,14 @@
 		textDocumentClass = [PhiTextDocument class];
 	self.textDocument = [[[textDocumentClass alloc] init] autorelease];
 	
-	tileWidthHint = [defaults floatForKey:@"tileWidthHint"];
-	tileHeightHint = [defaults floatForKey:@"tileHeightHint"];
+	tileWidthHint = MAX(0, [defaults floatForKey:@"tileWidthHint"]);
+    if (tileWidthHint <= 0.0) tileWidthHint = PHI_TILE_WIDTH_HINT;
+	tileHeightHint = MAX(0, [defaults floatForKey:@"tileHeightHint"]);
+    if (tileHeightHint <= 0.0) tileHeightHint = PHI_TILE_HEIGHT_HINT;
 
-	autoScrollGap = [defaults floatForKey:@"autoScrollGap"];
-	autoScrollDuration = [defaults floatForKey:@"autoScrollDuration"];
-	autoScrollSpeed = [defaults floatForKey:@"autoScrollSpeed"];
+	autoScrollGap = [defaults objectForKey:@"autoScrollGap"] ? [defaults floatForKey:@"autoScrollGap"] : PHI_AUTO_SCROLL_GAP;
+	autoScrollDuration = [defaults objectForKey:@"autoScrollDuration"] ? [defaults floatForKey:@"autoScrollDuration"] : PHI_AUTO_SCROLL_DURATION;
+	autoScrollSpeed = [defaults objectForKey:@"autoScrollSpeed"] ? [defaults floatForKey:@"autoScrollSpeed"] : PHI_AUTO_SCROLL_SPEED;
 	scrollBuffer = [defaults floatForKey:@"scrollBuffer"];
 	if (scrollBuffer <= 0.0)
 		scrollBuffer = 2.5 * MIN(tileWidthHint, tileHeightHint);
@@ -259,7 +186,7 @@
 	flags.shouldNotifyInputDelegate = YES;
 	flags.shouldInvalidateTextDocument = YES;
 	
-	autocapitalizationType = [defaults integerForKey:@"autocapitalizationType"];
+	autocapitalizationType = [defaults objectForKey:@"autocapitalizationType"] ? [defaults integerForKey:@"autocapitalizationType"] : UITextAutocapitalizationTypeSentences;
 	autocorrectionType = [defaults integerForKey:@"autocorrectionType"];
 	keyboardType = [defaults integerForKey:@"keyboardType"];
 	keyboardAppearance = [defaults integerForKey:@"keyboardAppearance"];
@@ -271,9 +198,9 @@
 		[menuPages release];
 	menuPages = [[NSMutableArray alloc] initWithCapacity:2];
 	[menuPages addObject:[NSMutableArray arrayWithCapacity:2]];
-	flags.enableMenuPositionAdjustment = [defaults boolForKey:@"enableMenuPositionAdjustment"];
+	flags.enableMenuPositionAdjustment = ![defaults boolForKey:@"disableMenuPositionAdjustment"];
 	flags.enableMenuPaging = [defaults boolForKey:@"enableMenuPaging"];
-	flags.menuArrowDirectionOverride = [defaults boolForKey:@"enableMenuPositionAdjustment"];
+	flags.menuArrowDirectionOverride = ![defaults boolForKey:@"disableMenuPositionAdjustment"];
 	menuPageNumber = 0;
 	menuTargetRect = CGRectNull;
 	
@@ -297,7 +224,7 @@
 	flags.blinkingPaused = NO;
 	flags.magnifierShown = NO;
 	
-	flags.editable = [defaults boolForKey:@"editable"];
+	flags.editable = ![defaults boolForKey:@"noneditable"];
 	inputView = nil;
 	inputAccessoryView = nil;
 	keyboardFrame = CGRectZero;
@@ -326,10 +253,12 @@
 	NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
 	[defaults addSuiteNamed:@"com.phitext"];
 	
-	if (tileWidthHint != [defaults floatForKey:@"tileWidthHint"]
-		|| tileHeightHint != [defaults floatForKey:@"tileHeightHint"]) {
-		tileWidthHint = [defaults floatForKey:@"tileWidthHint"];
-		tileHeightHint = [defaults floatForKey:@"tileHeightHint"];
+	if (([defaults objectForKey:@"tileWidthHint"] && tileWidthHint != [defaults floatForKey:@"tileWidthHint"])
+		|| ([defaults objectForKey:@"tileHeightHint"] && tileHeightHint != [defaults floatForKey:@"tileHeightHint"])) {
+        tileWidthHint = MAX(0, [defaults floatForKey:@"tileWidthHint"]);
+        if (tileWidthHint <= 0.0) tileWidthHint = PHI_TILE_WIDTH_HINT;
+        tileHeightHint = MAX(0, [defaults floatForKey:@"tileHeightHint"]);
+        if (tileHeightHint <= 0.0) tileHeightHint = PHI_TILE_HEIGHT_HINT;
 
 		if (textViews) {
 			for (UIView *view in textViews)
@@ -344,9 +273,9 @@
 		[self setNeedsLayout];
 	}
 	
-	autoScrollGap = [defaults floatForKey:@"autoScrollGap"];
-	autoScrollDuration = [defaults floatForKey:@"autoScrollDuration"];
-	autoScrollSpeed = [defaults floatForKey:@"autoScrollSpeed"];
+	autoScrollGap = [defaults objectForKey:@"autoScrollGap"] ? [defaults floatForKey:@"autoScrollGap"] : PHI_AUTO_SCROLL_GAP;
+	autoScrollDuration = [defaults objectForKey:@"autoScrollDuration"] ? [defaults floatForKey:@"autoScrollDuration"] : PHI_AUTO_SCROLL_DURATION;
+	autoScrollSpeed = [defaults objectForKey:@"autoScrollSpeed"] ? [defaults floatForKey:@"autoScrollSpeed"] : PHI_AUTO_SCROLL_SPEED;
 	scrollBuffer = [defaults floatForKey:@"scrollBuffer"];
 	if (scrollBuffer <= 0.0)
 		scrollBuffer = 2.5 * MIN(tileWidthHint, tileHeightHint);
