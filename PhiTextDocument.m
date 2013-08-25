@@ -1080,7 +1080,7 @@ static CGFloat PhiCeilPixelToCenter(CGFloat points, UIView *view) {
 	return [self beginContentAccessInRange:range andRect:rect updateDisplay:YES];
 }
 
-#define PHI_WILL_OWNER_NEED_DISPLAY_IN_RECT_AND_RANGE(_RECT_) if (shouldUpdateDisplay) PHI_SET_OWNER_NEEDS_DISPLAY_IN_RECT(CGRectOffset(_RECT_, self.paddingLeft, self.paddingTop))
+#define PHI_WILL_OWNER_NEED_DISPLAY_IN_RECT_AND_RANGE(_RECT_) PHI_SET_OWNER_NEEDS_DISPLAY_IN_RECT(CGRectOffset(_RECT_, self.paddingLeft, self.paddingTop))
 
 - (PhiAATreeRange *)beginContentAccessInRange:(PhiTextRange *)range andRect:(CGRect)rect updateDisplay:(BOOL)shouldUpdateDisplay {
 	if (range)
@@ -1272,7 +1272,8 @@ static CGFloat PhiCeilPixelToCenter(CGFloat points, UIView *view) {
 				} else if (diffLength // need to check diffLength since rect will not always change (consider one line per frame)
 						   || !CGRectEqualToRect(invalidRect, [textFrame rect])) {
 					invalidRect = PhiUnionRectFrame(invalidRect, textFrame);
-					PHI_WILL_OWNER_NEED_DISPLAY_IN_RECT_AND_RANGE(invalidRect);
+                    if (shouldUpdateDisplay)
+                        PHI_WILL_OWNER_NEED_DISPLAY_IN_RECT_AND_RANGE(invalidRect);
 				}
 				
 				if (firstNode != lastNode)
@@ -1340,6 +1341,12 @@ static CGFloat PhiCeilPixelToCenter(CGFloat points, UIView *view) {
 				firstNode = firstNode.previous;
 				textFrame = (PhiTextFrame *)firstNode.object;
 			}
+            
+            if (diffLength && lastNode.next.next.object) {
+                invalidRect = [lastNode.next.next.object CGRectValue];
+                [lastNode.next.next.object invalidateFrame];
+                PHI_WILL_OWNER_NEED_DISPLAY_IN_RECT_AND_RANGE(invalidRect);
+            }
 			
 			// But wait, check if lastEmptyFrame is needed...
 			textFrame = (PhiTextFrame *)lastNode.object;

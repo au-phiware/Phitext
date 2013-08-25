@@ -112,7 +112,7 @@ typedef enum {
 	CGRect keyboardFrame;
 	NSTimer *autoScrollTimer;
 	
-	UITextAutocapitalizationType autocapitalizationType; // default is UITextAutocapitalizationTypeNone
+	UITextAutocapitalizationType autocapitalizationType; // default is UITextAutocapitalizationTypeSentences
 	UITextAutocorrectionType autocorrectionType;         // default is UITextAutocorrectionTypeDefault
 	UIKeyboardType keyboardType;                         // default is UIKeyboardTypeDefault
 	UIKeyboardAppearance keyboardAppearance;             // default is UIKeyboardAppearanceDefault

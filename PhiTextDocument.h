@@ -63,6 +63,7 @@
 @property (nonatomic, retain, readonly) PhiTextFrame *lastEmptyFrame;
 
 - (void)invalidateDocument;
+- (CGRect)invalidateTextFrameRange:(PhiAATreeRange *)range;
 - (CGRect)invalidateDocumentRange:(PhiTextRange *)textRange;
 - (void)textWillChange;
 - (void)textDidChange;
@@ -102,8 +103,6 @@
 - (void)adjustHeightToTextFrame:(PhiTextFrame *)textFrame exansionOnly:(BOOL)exansionOnly;
 - (void)adjustWidthToTextFrame:(PhiTextFrame *)textFrame exansionOnly:(BOOL)exansionOnly;
 
-- (CGRect)invalidateTextFrameRange:(PhiAATreeRange *)range;
-- (CGRect)invalidateDocumentRange:(PhiTextRange *)textRange;
 - (PhiAATreeRange *)beginContentAccessInRect:(CGRect)rect;
 - (PhiAATreeRange *)beginContentAccessInRange:(PhiTextRange *)range;
 - (PhiAATreeRange *)beginContentAccessInRange:(PhiTextRange *)range andRect:(CGRect)rect;

@@ -1141,7 +1141,7 @@
 				location = PhiPositionOffset([range start]);
 				if (location != 0 && [self hasText]) {
 					length = 1;
-					location = location - 1;
+					location = location - length;
 				}
 #ifdef DEVELOPER
 				NSLog(@"location: %d -> %d", location, location - 1);
@@ -1194,7 +1194,9 @@
 }
 - (void)setSelectionAffinity:(UITextStorageDirection)affinity {
 #ifdef TRACE
-	NSLog(@"Setting selectionAffinity:%s.", affinity==0?"UITextStorageDirectionForward":"UITextStorageDirectionBackward");
+    if (affinity != selectionAffinity) {
+        NSLog(@"Setting selectionAffinity:%s.", affinity==0?"UITextStorageDirectionForward":"UITextStorageDirectionBackward");
+    }
 #endif
 	if (affinity == UITextStorageDirectionBackward) {
 		selectionAffinity = (UITextStorageDirection)affinity;
@@ -1223,10 +1225,13 @@
 		else
 			rv = UITextStorageDirectionForward;
 	} else
-	if ([[[self textDocument] store] isLineBreakAtIndex:PhiPositionOffset(position) - 1]
-		&& [[[self textDocument] store] isLineBreakAtIndex:PhiPositionOffset(position)]) {
+	if (//[[[self textDocument] store] isLineBreakAtIndex:PhiPositionOffset(position) - 1] &&
+		[[[self textDocument] store] isLineBreakAtIndex:PhiPositionOffset(position)]) {
 		rv = UITextStorageDirectionForward;
 	}
+#ifdef TRACE
+	NSLog(@"Getting selectionAffinity:%s forPosition:%@.", rv==0?"UITextStorageDirectionForward":"UITextStorageDirectionBackward", position);
+#endif
 	return rv;
 }
 
@@ -1567,11 +1572,11 @@
 }
 - (UITextPosition *)positionFromPosition:(PhiTextPosition *)position inDirection:(UITextLayoutDirection)direction offset:(NSInteger)offset {
 #ifdef TRACE
-	NSLog(@"%@Entering positionFromPosition:%@ inDirection:%d offset:%d...", traceIndent, position, direction, offset);
+	NSLog(@"%@Entering positionFromPosition:%@ inDirection:%d offset:%ld...", traceIndent, position, direction, offset);
 #endif
 	PhiTextPosition *newPosition = position;
 	NSInteger offsetDirection = 1;
-	UITextStorageDirection affinity = selectionAffinity;
+	UITextStorageDirection affinity;
 	UITextWritingDirection bwd = [self baseWritingDirectionForPosition:position inDirection:UITextStorageDirectionForward]; //TODO: which UITextStorageDirection?
 	if (bwd == UITextWritingDirectionRightToLeft) {
 		offsetDirection = -1;
@@ -1587,6 +1592,7 @@
 		case UITextLayoutDirectionUp:
 			offset = -offset;
 		case UITextLayoutDirectionDown:
+            affinity = [self selectionAffinityForPosition:position];
 			newPosition = [textDocument positionFromPosition:position withLineOffset:offset selectionAffinity:&affinity];
 			[self performSelectorOnMainThread:@selector(setSelectionAffinityValue:) withObject:[NSNumber numberWithInt:self.selectionAffinity | affinity] waitUntilDone:NO];
 			break;
@@ -2421,11 +2427,7 @@
 		else if ([[self tokenizer] isPosition:end atBoundary:granularity inDirection:UITextStorageDirectionForward]) {
 			start = [[self tokenizer] positionFromPosition:start toBoundary:granularity inDirection:UITextStorageDirectionBackward];
 		} else {
-			end = [[self tokenizer] positionFromPosition:end toBoundary:granularity inDirection:UITextStorageDirectionBackward];
-			if ([self comparePosition:end toPosition:start] == NSOrderedAscending) {
-				end = start;
-			}
-			start = [[self tokenizer] positionFromPosition:start toBoundary:granularity inDirection:UITextStorageDirectionBackward];
+			end = [[self tokenizer] positionFromPosition:end toBoundary:granularity inDirection:UITextStorageDirectionForward];
 			start = [[self tokenizer] positionFromPosition:start toBoundary:granularity inDirection:UITextStorageDirectionBackward];
 		}
 		if ([[[self textDocument] store] isLineBreakAtIndex:PhiPositionOffset(end) - 1]) {
